@@ -299,7 +299,8 @@ a{color:#5648e0;}
     </section>
 
     <section id="view-calendario" class="d-none">
-      <div class="topbar"><div><h1>Calendario</h1><div class="sub">Entregas de proyectos y deadlines de tareas</div></div></div>
+      <div class="topbar"><div><h1>Calendario</h1><div class="sub">Entregas de proyectos y deadlines de tareas · filtra para personalizar tu vista</div></div></div>
+      <div id="calFilters"></div>
       <div class="cal-toolbar">
         <button class="icon-btn" onclick="calNav(-1)"><i class="bi bi-chevron-left"></i></button>
         <span class="cal-title" id="calTitle"></span>
@@ -325,6 +326,7 @@ a{color:#5648e0;}
           <button data-m="lista" onclick="setTarView('lista')">Lista</button>
         </div>
         <input class="form-control" id="fTarBuscar" placeholder="Buscar tarea…" oninput="renderTareas()">
+        <select class="form-select" id="fTarCli" onchange="renderTareas()"><option value="">Todos los clientes</option></select>
         <select class="form-select" id="fTarProyecto" onchange="renderTareas()"><option value="">Todos los proyectos</option></select>
         <select class="form-select" id="fTarResp" onchange="renderTareas()"><option value="">Todas las personas</option></select>
         <select class="form-select" id="fTarPrio" onchange="renderTareas()"><option value="">Toda prioridad</option><option>Alta</option><option>Media</option><option>Baja</option></select>
@@ -336,8 +338,8 @@ a{color:#5648e0;}
     </section>
 
     <section id="view-mitrabajo" class="d-none">
-      <div class="topbar"><div><h1>Mi trabajo</h1><div class="sub">Lo tuyo, ordenado por urgencia</div></div>
-        <select class="form-select" id="mtPersona" style="max-width:220px;" onchange="renderMiTrabajo()"></select></div>
+      <div class="topbar"><div><h1>Mi trabajo</h1><div class="sub">Filtra por responsable (y cliente, proyecto o prioridad) para ver lo tuyo</div></div></div>
+      <div id="mtFilters"></div>
       <div id="mtBody"></div>
     </section>
 
@@ -347,7 +349,7 @@ a{color:#5648e0;}
     </section>
 
     <section id="view-cronograma" class="d-none">
-      <div class="topbar"><div><h1>Cronograma</h1><div class="sub">Timeline de proyectos por fechas (Gantt)</div></div></div>
+      <div class="topbar"><div><h1>Cronograma</h1><div class="sub">Timeline de tareas por fecha límite (Gantt) · filtra para personalizar</div></div></div>
       <div id="cronoBody"></div>
     </section>
   </main>
@@ -501,20 +503,21 @@ function renderDashboard(){
       <button class="btn btn-primary" onclick="openCliente()"><i class="bi bi-plus-lg me-1"></i>Crear primer cliente</button></div>`;
     return;
   }
-  const prox=DB.proyectos.filter(p=>!['Entregado','Pausado'].includes(p.estado)&&p.fechaEntrega).sort((a,b)=>a.fechaEntrega.localeCompare(b.fechaEntrega)).slice(0,6);
-  const proxHtml=prox.length?prox.map(p=>{const w=whenLabel(p.fechaEntrega);return `<div class="due-item"><div><div style="font-weight:600;cursor:pointer;" onclick="openProyectoDetail('${p.id}')">${esc(p.nombre)}</div><div class="text-muted" style="font-size:.8rem;">${esc(cliName(p.clienteId))} · <span class="chip ${chipClass(p.estado)}">${p.estado}</span></div></div><span class="when ${w.cls}">${w.txt}</span></div>`;}).join(''):'<div class="text-muted" style="font-size:.9rem;">Sin entregas con fecha.</div>';
+  const f=fpref('dash');const ftasks=DB.tareas.filter(t=>taskMatch(t,f));
+  const prox=ftasks.filter(t=>t.estado!=='Hecha'&&t.fechaLimite).sort((a,b)=>a.fechaLimite.localeCompare(b.fechaLimite)).slice(0,8);
+  const proxHtml=prox.length?prox.map(t=>{const w=whenLabel(t.fechaLimite);return `<div class="due-item"><div><div style="font-weight:600;cursor:pointer;" onclick="openTarea('${t.id}')">${esc(t.titulo)}</div><div class="text-muted" style="font-size:.8rem;">${esc(proyName(t.proyectoId))} · ${esc(cliName(taskCli(t)))} · ${esc(t.responsable||'—')}</div></div><span class="when ${w.cls}">${w.txt}</span></div>`;}).join(''):'<div class="text-muted" style="font-size:.9rem;">Sin entregas próximas con estos filtros.</div>';
 
   const carga={};
-  DB.tareas.filter(t=>t.estado!=='Hecha').forEach(t=>{const ppl=personsOf(t);const list=ppl.length?ppl:['Sin asignar'];const h=parseFloat(t.estimacion)||0;list.forEach(r=>{if(!carga[r])carga[r]={n:0,h:0};carga[r].n++;carga[r].h+=h;});});
+  ftasks.filter(t=>t.estado!=='Hecha').forEach(t=>{const r=t.responsable||'Sin asignar';const h=parseFloat(t.estimacion)||0;if(!carga[r])carga[r]={n:0,h:0};carga[r].n++;carga[r].h+=h;});
   const cargaArr=Object.entries(carga).sort((a,b)=>b[1].n-a[1].n);const maxN=Math.max(1,...cargaArr.map(e=>e[1].n));
   const cargaHtml=cargaArr.length?cargaArr.map(([r,d])=>`<div class="bar-row"><span class="bl" title="${esc(r)}">${esc(r)}</span><span class="bt"><span style="width:${Math.round(d.n/maxN*100)}%;${d.n>10?'background:#E5484D;':''}"></span></span><span class="bn" style="${d.n>10?'color:#c93b40;font-weight:700;':''}">${d.n}t · ${d.h}h</span></div>`).join(''):'<div class="text-muted" style="font-size:.9rem;">Sin tareas abiertas.</div>';
 
-  const total=DB.tareas.length||1;
-  const estadoHtml=EST_TAR.map(e=>{const n=DB.tareas.filter(t=>t.estado===e).length;return `<div class="bar-row"><span class="bl">${e}</span><span class="bt"><span style="width:${Math.round(n/total*100)}%;background:var(--nc-${e==='Hecha'?'lime':'purple'});"></span></span><span class="bn">${n}</span></div>`;}).join('');
+  const total=ftasks.length||1;
+  const estadoHtml=EST_TAR.map(e=>{const n=ftasks.filter(t=>t.estado===e).length;return `<div class="bar-row"><span class="bl">${e}</span><span class="bt"><span style="width:${Math.round(n/total*100)}%;background:var(--nc-${e==='Hecha'?'lime':'purple'});"></span></span><span class="bn">${n}</span></div>`;}).join('');
 
-  body.innerHTML=`<div class="row g-3">
-    <div class="col-lg-7"><div class="card-nc p-3 p-md-4 h-100"><div class="section-title">Próximas entregas</div>${proxHtml}</div></div>
-    <div class="col-lg-5"><div class="card-nc p-3 p-md-4 h-100"><div class="section-title">Carga del equipo</div>${cargaHtml}</div></div>
+  body.innerHTML=filterBar('dash')+`<div class="row g-3">
+    <div class="col-lg-7"><div class="card-nc p-3 p-md-4 h-100"><div class="section-title">Mis próximas entregas</div>${proxHtml}</div></div>
+    <div class="col-lg-5"><div class="card-nc p-3 p-md-4 h-100"><div class="section-title">Carga por responsable</div>${cargaHtml}</div></div>
     <div class="col-12"><div class="card-nc p-3 p-md-4"><div class="section-title">Tareas por estado</div>${estadoHtml}</div></div>
   </div>`;
 }
@@ -573,6 +576,10 @@ let calState={y:new Date().getFullYear(),m:new Date().getMonth()};
 function calNav(d){calState.m+=d;if(calState.m<0){calState.m=11;calState.y--;}if(calState.m>11){calState.m=0;calState.y++;}renderCalendario();}
 function calToday(){const t=new Date();calState={y:t.getFullYear(),m:t.getMonth()};renderCalendario();}
 function renderCalendario(){
+  document.getElementById('calFilters').innerHTML=filterBar('cal');
+  const f=fpref('cal');
+  const projs=DB.proyectos.filter(p=>projMatch(p,f));
+  const tasks=DB.tareas.filter(t=>taskMatch(t,f));
   document.getElementById('calWeekdays').innerHTML=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d=>`<div class="cal-wd">${d}</div>`).join('');
   const y=calState.y,m=calState.m;
   document.getElementById('calTitle').textContent=new Date(y,m,1).toLocaleDateString('es-ES',{month:'long',year:'numeric'});
@@ -584,8 +591,8 @@ function renderCalendario(){
     const ds=`${dObj.getFullYear()}-${String(dObj.getMonth()+1).padStart(2,'0')}-${String(dObj.getDate()).padStart(2,'0')}`;
     const other=dObj.getMonth()!==m,today=ds===todayStr;
     const evs=[];
-    DB.proyectos.filter(p=>p.fechaEntrega===ds).forEach(p=>evs.push({t:'proy',id:p.id,label:'▸ '+p.nombre}));
-    DB.tareas.filter(t=>t.fechaLimite===ds).forEach(t=>evs.push({t:'tar',id:t.id,label:t.titulo}));
+    projs.filter(p=>p.fechaEntrega===ds).forEach(p=>evs.push({t:'proy',id:p.id,label:'▸ '+p.nombre}));
+    tasks.filter(t=>t.fechaLimite===ds).forEach(t=>evs.push({t:'tar',id:t.id,label:t.titulo}));
     const shown=evs.slice(0,3).map(e=>`<div class="cal-ev ${e.t}" title="${esc(e.label)}" onclick="${e.t==='proy'?`openProyectoDetail('${e.id}')`:`openTarea('${e.id}')`}">${esc(e.label)}</div>`).join('');
     const more=evs.length>3?`<div class="cal-more">+${evs.length-3} más</div>`:'';
     cells+=`<div class="cal-cell ${other?'other':''} ${today?'today':''}"><div class="cal-dn">${dObj.getDate()}</div>${shown}${more}</div>`;
@@ -595,15 +602,17 @@ function renderCalendario(){
 
 /* Tareas */
 function refreshTarFilters(){
+  const fcl=document.getElementById('fTarCli'),curc=fcl.value;
+  fcl.innerHTML='<option value="">Todos los clientes</option>'+DB.clientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(c=>`<option value="${c.id}" ${c.id===curc?'selected':''}>${esc(c.nombre)}</option>`).join('');
   const fp=document.getElementById('fTarProyecto'),cur=fp.value;
   fp.innerHTML='<option value="">Todos los proyectos</option>'+DB.proyectos.map(p=>`<option value="${p.id}" ${p.id===cur?'selected':''}>${esc(p.nombre)}</option>`).join('');
-  const fr=document.getElementById('fTarResp'),curr=fr.value,resp=[...new Set(DB.tareas.flatMap(t=>personsOf(t)))];
+  const fr=document.getElementById('fTarResp'),curr=fr.value,resp=allResponsables();
   fr.innerHTML='<option value="">Todos los responsables</option>'+resp.map(r=>`<option ${r===curr?'selected':''}>${esc(r)}</option>`).join('');
 }
 function filteredTareas(){
   refreshTarFilters();
-  const fp=document.getElementById('fTarProyecto').value,fr=document.getElementById('fTarResp').value,fpr=document.getElementById('fTarPrio').value,q=norm(document.getElementById('fTarBuscar').value);
-  return DB.tareas.filter(t=>(!fp||t.proyectoId===fp)&&(!fr||personsOf(t).includes(fr))&&(!fpr||t.prioridad===fpr)&&(!q||norm(t.titulo).includes(q)||norm(proyName(t.proyectoId)).includes(q)||norm(t.etiquetas).includes(q)));
+  const fc=document.getElementById('fTarCli').value,fp=document.getElementById('fTarProyecto').value,fr=document.getElementById('fTarResp').value,fpr=document.getElementById('fTarPrio').value,q=norm(document.getElementById('fTarBuscar').value);
+  return DB.tareas.filter(t=>(!fc||taskCli(t)===fc)&&(!fp||t.proyectoId===fp)&&(!fr||(t.responsable||'')===fr)&&(!fpr||t.prioridad===fpr)&&(!q||norm(t.titulo).includes(q)||norm(proyName(t.proyectoId)).includes(q)||norm(t.etiquetas).includes(q)));
 }
 function tarGroupKey(t,mode){if(mode==='proyecto')return proyName(t.proyectoId);if(mode==='cliente'){const p=DB.proyectos.find(x=>x.id===t.proyectoId);return p?cliName(p.clienteId):'—';}if(mode==='responsable')return t.responsable||'Sin asignar';return '';}
 function taskCard(t){const w=whenLabel(t.fechaLimite);
@@ -629,11 +638,14 @@ function renderTareas(){
   const groups={};list.forEach(t=>{const k=tarGroupKey(t,mode);(groups[k]=groups[k]||[]).push(t);});
   cont.innerHTML=Object.keys(groups).sort().map(k=>`<div class="swim"><div class="swim-head" onclick="this.parentNode.classList.toggle('collapsed')"><i class="bi bi-chevron-down"></i> ${esc(k)} <span class="swim-count">${groups[k].length} tareas</span></div><div class="kanban swim-body">${kanbanColumns(groups[k])}</div></div>`).join('')||'<div class="empty"><i class="bi bi-funnel"></i>Ninguna tarea con estos filtros.</div>';
 }
-function moveTarea(id,estado){const t=DB.tareas.find(x=>x.id===id);if(!t)return;
-  if(DB.config&&DB.config.avisarDep&&['En curso','En revisión','Hecha'].includes(estado)&&depBlocked(t)){const dp=DB.tareas.find(x=>x.id===t.dependeDe);alert('Aviso: "'+t.titulo+'" depende de "'+(dp?dp.titulo:'otra tarea')+'", que aún no está Hecha.');}
-  t.estado=estado;
-  if(DB.config&&DB.config.autoComplete)autoCompleteProyecto(t.proyectoId);
-  dbSave('tareas',t);refreshAll();}
+function moveTarea(id,estado){const t=DB.tareas.find(x=>x.id===id);if(!t)return;const cfg=DB.config||{};
+  if(cfg.avisarDep&&['En curso','En revisión','Hecha'].includes(estado)&&depBlocked(t)){const dp=DB.tareas.find(x=>x.id===t.dependeDe);alert('Aviso: "'+t.titulo+'" depende de "'+(dp?dp.titulo:'otra tarea')+'", que aún no está Hecha.');}
+  const prev=t.estado;t.estado=estado;dbSave('tareas',t);
+  if(cfg.proyectoEnCurso&&estado==='En curso'){const p=DB.proyectos.find(x=>x.id===t.proyectoId);if(p&&['Propuesta','Aprobado'].includes(p.estado)){p.estado='En curso';dbSave('proyectos',p);}}
+  if(cfg.autoComplete)autoCompleteProyecto(t.proyectoId);
+  if(cfg.avisarDesbloqueo&&estado==='Hecha'&&prev!=='Hecha'){const desb=DB.tareas.filter(x=>x.dependeDe===id&&x.estado!=='Hecha');if(desb.length)alert('Se han desbloqueado '+desb.length+' tarea(s) que dependían de "'+t.titulo+'": '+desb.map(x=>x.titulo).slice(0,5).join(', ')+(desb.length>5?'…':''));}
+  if(cfg.avisarSobrecarga&&t.responsable&&estado!=='Hecha'){const n=DB.tareas.filter(x=>x.responsable===t.responsable&&x.estado!=='Hecha').length;if(n>12)alert('Atención: '+t.responsable+' tiene '+n+' tareas abiertas. Puede estar sobrecargado/a.');}
+  refreshAll();}
 function dragTask(e,id){e.dataTransfer.setData('text/plain',id);e.dataTransfer.effectAllowed='move';}
 function allowDrop(e){e.preventDefault();e.currentTarget.classList.add('drag-over');}
 function dropTask(e,estado){e.preventDefault();e.currentTarget.classList.remove('drag-over');const id=e.dataTransfer.getData('text/plain');if(id)moveTarea(id,estado);}
@@ -676,9 +688,12 @@ function detailBody(p){
 }
 function toggleCheck(tid,i){const t=DB.tareas.find(x=>x.id===tid);if(t&&t.checklist&&t.checklist[i]){t.checklist[i].done=!t.checklist[i].done;dbSave('tareas',t);refreshAll();}}
 function addUpdate(pid){const inp=document.getElementById('updInput');if(!inp)return;const v=inp.value.trim();if(!v)return;const p=DB.proyectos.find(x=>x.id===pid);if(!p)return;(p.comentarios=p.comentarios||[]).push({txt:v,ts:Date.now()});dbSave('proyectos',p);refreshAll();}
-function quickAddTask(){const inp=document.getElementById('qaTitulo');if(!inp)return;const v=inp.value.trim();if(!v||!currentDetailId)return;
-  const proj=DB.proyectos.find(x=>x.id===currentDetailId);const resp=(DB.config&&DB.config.heredarResp&&proj)?(proj.responsable||''):'';
-  const nt={id:uid(),titulo:v,proyectoId:currentDetailId,estado:'Por hacer',responsable:resp,equipo:'',prioridad:'Media',fechaLimite:'',estimacion:'',etiquetas:'',checklist:[],dependeDe:'',enlaces:'',notas:''};DB.tareas.push(nt);dbSave('tareas',nt);refreshAll();}
+function quickAddTask(){const inp=document.getElementById('qaTitulo');if(!inp)return;const v=inp.value.trim();if(!v||!currentDetailId)return;const cfg=DB.config||{};
+  const proj=DB.proyectos.find(x=>x.id===currentDetailId);
+  const resp=(cfg.heredarResp&&proj)?(proj.responsable||''):'';
+  const fl=(cfg.heredarFecha&&proj)?(proj.fechaEntrega||''):'';
+  const pr=(cfg.heredarPrio&&proj&&proj.prioridad==='Alta')?'Alta':'Media';
+  const nt={id:uid(),titulo:v,proyectoId:currentDetailId,estado:'Por hacer',responsable:resp,equipo:'',prioridad:pr,fechaLimite:fl,estimacion:'',etiquetas:'',checklist:[],dependeDe:'',enlaces:'',notas:''};DB.tareas.push(nt);dbSave('tareas',nt);refreshAll();}
 
 /* Formularios */
 const entityModal=()=>bootstrap.Modal.getOrCreateInstance(document.getElementById('entityModal'));
@@ -721,7 +736,7 @@ function openTarea(id){if(!DB.proyectos.length){alert('Crea antes un proyecto.')
     ()=>{const d=formData();if(!d.titulo){alert('Ponle un título a la tarea');return;}
       d.checklist=(d._checklist||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const done=/^(x\s|\[x\])/i.test(l);return {t:l.replace(/^(x\s|\[x\]\s?)/i,'').trim(),done};});delete d._checklist;
       if(d.dependeDe){const dep=DB.tareas.find(x=>x.id===d.dependeDe);if(!dep||dep.proyectoId!==d.proyectoId)d.dependeDe='';}
-      if(!id&&DB.config&&DB.config.heredarResp&&!d.responsable){const proj=DB.proyectos.find(x=>x.id===d.proyectoId);if(proj)d.responsable=proj.responsable||'';}
+      if(!id&&DB.config){const proj=DB.proyectos.find(x=>x.id===d.proyectoId);if(proj){if(DB.config.heredarResp&&!d.responsable)d.responsable=proj.responsable||'';if(DB.config.heredarFecha&&!d.fechaLimite)d.fechaLimite=proj.fechaEntrega||'';if(DB.config.heredarPrio&&proj.prioridad==='Alta'&&(!d.prioridad||d.prioridad==='Media'))d.prioridad='Alta';}}
       let rec;if(id){Object.assign(t,d);rec=t;}else{rec={id:uid(),...d};DB.tareas.push(rec);}dbSave('tareas',rec);entityModal().hide();refreshAll();});
 }
 function delTarea(id){askConfirm('Eliminar tarea','Esta acción no se puede deshacer.',()=>{DB.tareas=DB.tareas.filter(t=>t.id!==id);dbDel('tareas',id);refreshAll();});}
@@ -744,15 +759,13 @@ function resetData(){askConfirm('Vaciar todo','Se borrarán todos los clientes, 
 /* Mi trabajo */
 let mtPerson=null;
 function renderMiTrabajo(){
-  const sel=document.getElementById('mtPersona');const ppl=allPeople();
-  if(!ppl.length){document.getElementById('mtBody').innerHTML='<div class="empty"><i class="bi bi-person"></i>Aún no hay personas asignadas a tareas o proyectos.</div>';sel.innerHTML='';return;}
-  if(!mtPerson||!ppl.includes(mtPerson))mtPerson=ppl.includes(sel.value)?sel.value:ppl[0];
-  sel.innerHTML=ppl.map(p=>`<option ${p===mtPerson?'selected':''}>${esc(p)}</option>`).join('');mtPerson=sel.value;
-  const mine=DB.tareas.filter(t=>t.estado!=='Hecha'&&personsOf(t).includes(mtPerson));
+  document.getElementById('mtFilters').innerHTML=filterBar('mt');
+  const f=fpref('mt');
+  const mine=DB.tareas.filter(t=>t.estado!=='Hecha'&&taskMatch(t,f));
   const du=t=>daysUntil(t.fechaLimite);
-  const bucket=(name,filter,icon)=>{const items=mine.filter(filter);if(!items.length)return '';return `<div class="mt-bucket"><h5><i class="bi ${icon} me-1"></i>${name} <span class="mono" style="font-size:.8rem;color:var(--nc-muted);">${items.length}</span></h5><div class="card-nc p-2 p-md-3 lwrap">${items.map(taskRow).join('')}</div></div>`;};
+  const bucket=(name,filt,icon)=>{const items=mine.filter(filt);if(!items.length)return '';return `<div class="mt-bucket"><h5><i class="bi ${icon} me-1"></i>${name} <span class="mono" style="font-size:.8rem;color:var(--nc-muted);">${items.length}</span></h5><div class="card-nc p-2 p-md-3 lwrap">${items.map(taskRow).join('')}</div></div>`;};
   let html=bucket('Vencidas',t=>t.fechaLimite&&du(t)<0,'bi-exclamation-octagon')+bucket('Hoy',t=>du(t)===0,'bi-alarm')+bucket('Esta semana',t=>du(t)!==null&&du(t)>0&&du(t)<=7,'bi-calendar-week')+bucket('Más adelante',t=>du(t)!==null&&du(t)>7,'bi-calendar3')+bucket('Sin fecha',t=>!t.fechaLimite,'bi-infinity');
-  if(!mine.length)html='<div class="empty"><i class="bi bi-emoji-smile"></i>Sin tareas abiertas para '+esc(mtPerson)+'.</div>';
+  if(!mine.length)html='<div class="empty"><i class="bi bi-emoji-smile"></i>Sin tareas abiertas con estos filtros.</div>';
   document.getElementById('mtBody').innerHTML='<div class="mt-buckets">'+html+'</div>';
 }
 /* Informes */
@@ -760,24 +773,28 @@ function barBlock(title,pairs,colorFn){const max=Math.max(1,...pairs.map(p=>p[1]
   return `<div class="card-nc p-3 p-md-4"><div class="section-title">${title}</div>${pairs.length?pairs.map(([k,v])=>`<div class="bar-row"><span class="bl" title="${esc(k)}">${esc(k)}</span><span class="bt"><span style="width:${Math.round(v/max*100)}%;background:${colorFn?colorFn(k):'var(--nc-purple)'};"></span></span><span class="bn">${v}</span></div>`).join(''):'<div class="text-muted" style="font-size:.9rem;">Sin datos.</div>'}</div>`;}
 function renderInformes(){
   const cont=document.getElementById('repBody');
-  if(!DB.tareas.length&&!DB.proyectos.length){cont.innerHTML='<div class="empty"><i class="bi bi-bar-chart"></i>Aún no hay datos para informar.</div>';return;}
+  const bar=filterBar('rep');
+  if(!DB.tareas.length&&!DB.proyectos.length){cont.innerHTML=bar+'<div class="empty"><i class="bi bi-bar-chart"></i>Aún no hay datos para informar.</div>';return;}
+  const f=fpref('rep');
+  const T=DB.tareas.filter(t=>taskMatch(t,f));
+  const P=DB.proyectos.filter(p=>projMatch(p,f));
   const cnt=arr=>{const m={};arr.forEach(k=>{k=k||'—';m[k]=(m[k]||0)+1;});return Object.entries(m).sort((a,b)=>b[1]-a[1]);};
-  const tEstado=EST_TAR.map(e=>[e,DB.tareas.filter(t=>t.estado===e).length]);
-  const tPrio=PRIOS.map(p=>[p,DB.tareas.filter(t=>t.prioridad===p).length]);
-  const tPers=cnt(DB.tareas.filter(t=>t.estado!=='Hecha').flatMap(t=>personsOf(t))).slice(0,12);
-  const pEstado=EST_PROY.map(e=>[e,DB.proyectos.filter(p=>p.estado===e).length]);
-  const pCli=cnt(DB.proyectos.map(p=>cliName(p.clienteId))).slice(0,12);
-  const done=DB.tareas.filter(t=>t.estado==='Hecha').length;const pct=DB.tareas.length?Math.round(done/DB.tareas.length*100):0;
-  cont.innerHTML=`<div class="row g-3 mb-3">
-    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-list-check"></i>Tareas totales</div><div class="num">${DB.tareas.length}</div></div></div>
-    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-check2-all"></i>Completado</div><div class="num">${pct}%</div><div class="foot">${done} de ${DB.tareas.length}</div></div></div>
-    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-kanban"></i>Proyectos</div><div class="num">${DB.proyectos.length}</div></div></div>
-    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-building"></i>Clientes</div><div class="num">${DB.clientes.length}</div></div></div>
+  const tEstado=EST_TAR.map(e=>[e,T.filter(t=>t.estado===e).length]);
+  const tPrio=PRIOS.map(p=>[p,T.filter(t=>t.prioridad===p).length]);
+  const tPers=cnt(T.filter(t=>t.estado!=='Hecha').map(t=>t.responsable||'Sin asignar')).slice(0,12);
+  const pEstado=EST_PROY.map(e=>[e,P.filter(p=>p.estado===e).length]);
+  const pCli=cnt(P.map(p=>cliName(p.clienteId))).slice(0,12);
+  const done=T.filter(t=>t.estado==='Hecha').length;const pct=T.length?Math.round(done/T.length*100):0;
+  cont.innerHTML=bar+`<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-list-check"></i>Tareas</div><div class="num">${T.length}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-check2-all"></i>Completado</div><div class="num">${pct}%</div><div class="foot">${done} de ${T.length}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-kanban"></i>Proyectos</div><div class="num">${P.length}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-building"></i>Clientes</div><div class="num">${new Set(P.map(p=>p.clienteId)).size}</div></div></div>
   </div>
   <div class="rep-grid">
     ${barBlock('Tareas por estado',tEstado,k=>k==='Hecha'?'var(--nc-lime)':'var(--nc-purple)')}
     ${barBlock('Tareas por prioridad',tPrio,k=>k==='Alta'?'#E5484D':k==='Media'?'#E8A33D':'#9995ad')}
-    ${barBlock('Carga por persona (abiertas)',tPers)}
+    ${barBlock('Tareas por responsable (abiertas)',tPers)}
     ${barBlock('Proyectos por estado',pEstado)}
     ${barBlock('Proyectos por cliente',pCli)}
   </div>`;
@@ -791,8 +808,8 @@ function autoCompleteProyecto(pid){const p=DB.proyectos.find(x=>x.id===pid);if(!
 
 /* Vistas guardadas (Notion) */
 function renderViewSelect(){const s=document.getElementById('savedViewSel');if(!s)return;const cur=s.value;s.innerHTML='<option value="">Vistas guardadas…</option>'+(DB.savedViews||[]).map(v=>`<option value="${v.id}" ${v.id===cur?'selected':''}>${esc(v.name)}</option>`).join('');}
-function applyView(id){const v=(DB.savedViews||[]).find(x=>x.id===id);if(!v)return;tarViewMode=v.viewMode||'tablero';document.querySelectorAll('#tarViewSeg button').forEach(b=>b.classList.toggle('active',b.dataset.m===tarViewMode));document.getElementById('fTarGroup').value=v.group||'';document.getElementById('fTarProyecto').value=v.proyecto||'';document.getElementById('fTarResp').value=v.resp||'';document.getElementById('fTarPrio').value=v.prio||'';document.getElementById('fTarBuscar').value=v.buscar||'';renderTareas();document.getElementById('savedViewSel').value=id;}
-function saveView(){openModal('Guardar vista actual',field('Nombre de la vista','vname','text','',null,true),()=>{const d=formData();if(!d.vname){alert('Ponle un nombre');return;}const v={id:uid(),name:d.vname,viewMode:tarViewMode,group:document.getElementById('fTarGroup').value,proyecto:document.getElementById('fTarProyecto').value,resp:document.getElementById('fTarResp').value,prio:document.getElementById('fTarPrio').value,buscar:document.getElementById('fTarBuscar').value};(DB.savedViews=DB.savedViews||[]).push(v);dbSave('saved_views',v);entityModal().hide();renderViewSelect();document.getElementById('savedViewSel').value=v.id;});}
+function applyView(id){const v=(DB.savedViews||[]).find(x=>x.id===id);if(!v)return;tarViewMode=v.viewMode||'tablero';document.querySelectorAll('#tarViewSeg button').forEach(b=>b.classList.toggle('active',b.dataset.m===tarViewMode));document.getElementById('fTarCli').value=v.cliente||'';document.getElementById('fTarGroup').value=v.group||'';document.getElementById('fTarProyecto').value=v.proyecto||'';document.getElementById('fTarResp').value=v.resp||'';document.getElementById('fTarPrio').value=v.prio||'';document.getElementById('fTarBuscar').value=v.buscar||'';renderTareas();document.getElementById('savedViewSel').value=id;}
+function saveView(){openModal('Guardar vista actual',field('Nombre de la vista','vname','text','',null,true),()=>{const d=formData();if(!d.vname){alert('Ponle un nombre');return;}const v={id:uid(),name:d.vname,viewMode:tarViewMode,cliente:document.getElementById('fTarCli').value,group:document.getElementById('fTarGroup').value,proyecto:document.getElementById('fTarProyecto').value,resp:document.getElementById('fTarResp').value,prio:document.getElementById('fTarPrio').value,buscar:document.getElementById('fTarBuscar').value};(DB.savedViews=DB.savedViews||[]).push(v);dbSave('saved_views',v);entityModal().hide();renderViewSelect();document.getElementById('savedViewSel').value=v.id;});}
 function deleteView(){const s=document.getElementById('savedViewSel');const id=s.value;if(!id){alert('Elige primero una vista guardada.');return;}askConfirm('Borrar vista','¿Eliminar esta vista guardada?',()=>{DB.savedViews=(DB.savedViews||[]).filter(v=>v.id!==id);dbDel('saved_views',id);renderViewSelect();});}
 
 /* Automatizaciones (Trello Butler / Monday) */
@@ -800,40 +817,64 @@ function openAutomations(){const c=DB.config||{};
   const row=(key,label,desc)=>`<div class="col-12"><label class="d-flex align-items-start gap-2" style="cursor:pointer;"><input type="checkbox" ${c[key]?'checked':''} onchange="toggleConfig('${key}',this.checked)" style="margin-top:.25rem;width:16px;height:16px;accent-color:var(--nc-purple);"><span><strong>${label}</strong><br><span class="text-muted" style="font-size:.85rem;">${desc}</span></span></label></div>`;
   openModal('Automatizaciones',
     row('autoComplete','Autocompletar proyecto','Cuando todas sus tareas están en Hecha, el proyecto pasa a Entregado (y vuelve a En curso si se reabre una tarea).')+
+    row('proyectoEnCurso','Activar proyecto al arrancar','Al mover una tarea a «En curso», si el proyecto estaba en Propuesta o Aprobado, pasa automáticamente a En curso.')+
     row('heredarResp','Heredar responsable','Al crear una tarea sin responsable, se le asigna el responsable del proyecto.')+
-    row('avisarDep','Avisar de dependencias','Al mover una tarea cuya dependencia aún no está Hecha, muestra un aviso.'),
+    row('heredarFecha','Heredar fecha de entrega','Al crear una tarea sin fecha límite, toma la fecha de entrega del proyecto.')+
+    row('heredarPrio','Heredar prioridad del proyecto','Al crear una tarea, si el proyecto tiene prioridad Alta, la nueva tarea nace en Alta.')+
+    row('avisarDep','Avisar de dependencias','Al mover una tarea cuya dependencia aún no está Hecha, muestra un aviso.')+
+    row('avisarDesbloqueo','Avisar de desbloqueos','Al completar una tarea, avisa si con ello se han desbloqueado otras que dependían de ella.')+
+    row('avisarSobrecarga','Avisar de sobrecarga','Al asignar/mover trabajo, avisa si un responsable supera 12 tareas abiertas.'),
     ()=>{entityModal().hide();});
   document.getElementById('entitySave').textContent='Cerrar';
 }
 function toggleConfig(k,v){DB.config=DB.config||{};DB.config[k]=v;dbConfig();if(k==='autoComplete'&&v)DB.proyectos.forEach(p=>autoCompleteProyecto(p.id));refreshAll();}
 
 /* Cronograma (Gantt de proyectos · Asana/Monday) */
-let cronoBy='todos';
+let cronoBy='none';
 function setCrono(m){cronoBy=m;renderCronograma();}
 function renderCronograma(){
   const cont=document.getElementById('cronoBody');
-  const withDates=DB.proyectos.filter(p=>p.fechaInicio&&p.fechaEntrega);
-  const noDates=DB.proyectos.filter(p=>!(p.fechaInicio&&p.fechaEntrega));
-  const seg=`<div class="cal-toolbar"><div class="segmented" id="cronoSeg"><button class="${cronoBy==='todos'?'active':''}" data-m="todos" onclick="setCrono('todos')">Todos</button><button class="${cronoBy==='cliente'?'active':''}" data-m="cliente" onclick="setCrono('cliente')">Por cliente</button></div></div>`;
-  if(!withDates.length){cont.innerHTML=seg+'<div class="empty"><i class="bi bi-bar-chart-steps"></i>No hay proyectos con fecha de inicio y entrega. Añádelas para ver el cronograma.</div>';return;}
+  const f=fpref('cron');
+  const seg=filterBar('cron')+`<div class="cal-toolbar"><div class="segmented" id="cronoSeg"><button class="${cronoBy==='none'?'active':''}" data-m="none" onclick="setCrono('none')">Todos</button><button class="${cronoBy==='responsable'?'active':''}" data-m="responsable" onclick="setCrono('responsable')">Por responsable</button><button class="${cronoBy==='cliente'?'active':''}" data-m="cliente" onclick="setCrono('cliente')">Por cliente</button></div></div>`;
+  const all=DB.tareas.filter(t=>taskMatch(t,f));
+  const withDates=all.filter(t=>t.fechaLimite);
+  const noDates=all.filter(t=>!t.fechaLimite);
+  if(!withDates.length){cont.innerHTML=seg+'<div class="empty"><i class="bi bi-bar-chart-steps"></i>No hay tareas con fecha límite (con estos filtros).</div>';return;}
   const toD=s=>new Date(s+'T00:00:00').getTime();const DAY=86400000;
-  let min=Math.min(...withDates.map(p=>toD(p.fechaInicio)))-3*DAY;
-  let max=Math.max(...withDates.map(p=>toD(p.fechaEntrega)))+3*DAY;const total=max-min||1;
-  const pctL=t=>(t-min)/total*100;
+  const durDays=t=>Math.max(1,Math.ceil((parseFloat(t.estimacion)||8)/8));
+  let min=Math.min(...withDates.map(t=>toD(t.fechaLimite)-durDays(t)*DAY))-2*DAY;
+  let max=Math.max(...withDates.map(t=>toD(t.fechaLimite)))+2*DAY;const total=max-min||1;
+  const pctL=x=>(x-min)/total*100;
   const months=[];let d=new Date(min);d=new Date(d.getFullYear(),d.getMonth(),1);
   while(d.getTime()<=max){const s=Math.max(d.getTime(),min);const nd=new Date(d.getFullYear(),d.getMonth()+1,1);const e=Math.min(nd.getTime(),max);if(e>s)months.push({label:d.toLocaleDateString('es-ES',{month:'short',year:'2-digit'}),left:pctL(s),width:(e-s)/total*100});d=nd;}
   const today=Date.now();const todayLeft=(today>=min&&today<=max)?pctL(today):null;
-  const estColor=e=>({'En curso':'#6A5CFF','En revisión':'#E8A33D','Entregado':'#17A673','Propuesta':'#9995ad','Aprobado':'#185FA5','Pausado':'#B9B4D6'}[e]||'#6A5CFF');
-  const barRow=p=>{const s=toD(p.fechaInicio),e=toD(p.fechaEntrega);const l=pctL(s),w=Math.max((e-s)/total*100,1.5);
-    return `<div class="gantt-row"><div class="gantt-label" title="${esc(p.nombre)}">${esc(p.nombre)}</div><div class="gantt-track">${todayLeft!==null?`<div class="gantt-today" style="left:${todayLeft}%;"></div>`:''}<div class="gantt-bar" style="left:${l}%;width:${w}%;background:${estColor(p.estado)};" onclick="openProyectoDetail('${p.id}')" title="${esc(p.nombre)} · ${fmtDate(p.fechaInicio)} → ${fmtDate(p.fechaEntrega)}"><span>${esc(p.nombre)}</span></div></div></div>`;};
-  const header=`<div class="gantt-row gantt-header"><div class="gantt-label"></div><div class="gantt-track">${months.map(m=>`<div class="gantt-month" style="left:${m.left}%;width:${m.width}%;">${m.label}</div>`).join('')}${todayLeft!==null?`<div class="gantt-today" style="left:${todayLeft}%;"></div>`:''}</div></div>`;
+  const col=e=>({'Backlog':'#9995ad','Por hacer':'#185FA5','En curso':'#6A5CFF','En revisión':'#E8A33D','Hecha':'#17A673'}[e]||'#6A5CFF');
+  const barRow=t=>{const e=toD(t.fechaLimite),s=e-durDays(t)*DAY;const l=pctL(s),w=Math.max((e-s)/total*100,1.5);
+    return `<div class="gantt-row"><div class="gantt-label" title="${esc(t.titulo)}">${esc(t.titulo)}</div><div class="gantt-track">${todayLeft!==null?`<div class="gantt-today" style="left:${todayLeft}%;"></div>`:''}<div class="gantt-bar" style="left:${l}%;width:${w}%;background:${col(t.estado)};" onclick="openTarea('${t.id}')" title="${esc(t.titulo)} · ${esc(proyName(t.proyectoId))} · ${esc(t.responsable||'sin responsable')} · vence ${fmtDate(t.fechaLimite)}"><span>${esc(t.titulo)}</span></div></div></div>`;};
+  const header=`<div class="gantt-row gantt-header"><div class="gantt-label"></div><div class="gantt-track">${months.map(mo=>`<div class="gantt-month" style="left:${mo.left}%;width:${mo.width}%;">${mo.label}</div>`).join('')}${todayLeft!==null?`<div class="gantt-today" style="left:${todayLeft}%;"></div>`:''}</div></div>`;
+  const st=(a,b)=>a.fechaLimite.localeCompare(b.fechaLimite);
   let body;
-  if(cronoBy==='cliente'){const byId={};withDates.forEach(p=>{(byId[p.clienteId]=byId[p.clienteId]||[]).push(p);});
-    body=Object.entries(byId).sort((a,b)=>cliName(a[0]).localeCompare(cliName(b[0]))).map(([cid,ps])=>`<div class="gantt-grp">${esc(cliName(cid))}</div>`+ps.sort((a,b)=>a.fechaInicio.localeCompare(b.fechaInicio)).map(barRow).join('')).join('');
-  }else{body=withDates.slice().sort((a,b)=>a.fechaInicio.localeCompare(b.fechaInicio)).map(barRow).join('');}
-  cont.innerHTML=seg+`<div class="gantt">${header}${body}</div>`+(noDates.length?`<div class="text-muted" style="font-size:.85rem;margin-top:.8rem;">${noDates.length} proyecto(s) sin fechas no se muestran: ${esc(noDates.map(p=>p.nombre).slice(0,6).join(', '))}${noDates.length>6?'…':''}</div>`:'');
+  if(cronoBy==='responsable'||cronoBy==='cliente'){
+    const kf=cronoBy==='responsable'?(t=>t.responsable||'Sin asignar'):(t=>cliName(taskCli(t)));
+    const g={};withDates.forEach(t=>{const k=kf(t);(g[k]=g[k]||[]).push(t);});
+    body=Object.keys(g).sort().map(k=>`<div class="gantt-grp">${esc(k)}</div>`+g[k].sort(st).map(barRow).join('')).join('');
+  }else{body=withDates.slice().sort(st).map(barRow).join('');}
+  cont.innerHTML=seg+`<div class="gantt">${header}${body}</div>`+(noDates.length?`<div class="text-muted" style="font-size:.85rem;margin-top:.8rem;">${noDates.length} tarea(s) sin fecha límite no se muestran.</div>`:'');
 }
 
+let PREFS={};try{PREFS=JSON.parse(localStorage.getItem('nc_prefs')||'{}');}catch(e){PREFS={};}
+function savePrefs(){try{localStorage.setItem('nc_prefs',JSON.stringify(PREFS));}catch(e){}}
+function fpref(px){return PREFS[px]||(PREFS[px]={cliente:'',proyecto:'',responsable:'',prioridad:''});}
+function _val(id){const el=document.getElementById(id);return el?el.value:'';}
+function allResponsables(){const s=new Set();DB.tareas.forEach(t=>{if(t.responsable)s.add(t.responsable.trim());});DB.proyectos.forEach(p=>{if(p.responsable)s.add(p.responsable.trim());});return [...s].filter(Boolean).sort();}
+function taskCli(t){const p=DB.proyectos.find(x=>x.id===t.proyectoId);return p?p.clienteId:'';}
+function taskMatch(t,f){if(f.cliente&&taskCli(t)!==f.cliente)return false;if(f.proyecto&&t.proyectoId!==f.proyecto)return false;if(f.responsable&&(t.responsable||'')!==f.responsable)return false;if(f.prioridad&&t.prioridad!==f.prioridad)return false;return true;}
+function projMatch(p,f){if(f.cliente&&p.clienteId!==f.cliente)return false;if(f.proyecto&&p.id!==f.proyecto)return false;if(f.responsable&&(p.responsable||'')!==f.responsable)return false;if(f.prioridad&&p.prioridad!==f.prioridad)return false;return true;}
+function filterBar(px){const f=fpref(px);const cli=DB.clientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre));const pr=DB.proyectos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre));const rs=allResponsables();const o=(v,txt,cur)=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(txt)}</option>`;
+  return `<div class="filters"><select class="form-select" id="${px}Cli" onchange="applyFilters('${px}')"><option value="">Todos los clientes</option>${cli.map(c=>o(c.id,c.nombre,f.cliente)).join('')}</select><select class="form-select" id="${px}Proy" onchange="applyFilters('${px}')"><option value="">Todos los proyectos</option>${pr.map(p=>o(p.id,p.nombre+' · '+cliName(p.clienteId),f.proyecto)).join('')}</select><select class="form-select" id="${px}Resp" onchange="applyFilters('${px}')"><option value="">Todos los responsables</option>${rs.map(r=>o(r,r,f.responsable)).join('')}</select><select class="form-select" id="${px}Prio" onchange="applyFilters('${px}')"><option value="">Toda prioridad</option>${PRIOS.map(p=>o(p,p,f.prioridad)).join('')}</select><button class="icon-btn" title="Limpiar filtros" onclick="clearFilters('${px}')"><i class="bi bi-x-circle"></i></button></div>`;}
+function applyFilters(px){const f=fpref(px);f.cliente=_val(px+'Cli');f.proyecto=_val(px+'Proy');f.responsable=_val(px+'Resp');f.prioridad=_val(px+'Prio');savePrefs();rerender(px);}
+function clearFilters(px){PREFS[px]={cliente:'',proyecto:'',responsable:'',prioridad:''};savePrefs();rerender(px);}
+function rerender(px){const m={dash:renderDashboard,mt:renderMiTrabajo,cal:renderCalendario,cron:renderCronograma,rep:renderInformes};if(m[px])m[px]();}
 /* Init · autenticación + carga */
 async function bootApp(){await loadAll();setupRealtime();document.getElementById('loginScreen').style.display='none';switchView('dashboard');}
 let _rtDone=false;
