@@ -46,6 +46,7 @@ a{color:#5648e0;}
 
 .app-shell{display:flex;min-height:100vh;}
 .sidebar{background:var(--nc-night);color:#E6E3F5;width:250px;flex-shrink:0;padding:1.25rem 1rem;display:flex;flex-direction:column;}
+.sidebar.offcanvas-md{background:var(--nc-night)!important;--bs-offcanvas-bg:var(--nc-night);color:#E6E3F5;border-right:1px solid var(--nc-border);}
 @media (min-width:768px){.sidebar{position:sticky;top:0;height:100vh;overflow:auto;}}
 .main{flex:1;min-width:0;padding:1.25rem 1.5rem 3rem;}
 .brand{display:flex;align-items:center;gap:.65rem;margin-bottom:1.75rem;padding:0 .25rem;}
@@ -895,14 +896,15 @@ function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme
 async function genRecurrencias(mode){
   if(!(DB.config&&DB.config.recurrencia)){if(mode==='manual')alert('Activa primero "Generar tareas recurrentes" en Automatizaciones.');return;}
   const low=s=>(s||'').toLowerCase();
-  const tags=t=>low(t.etiquetas).split(',').map(x=>x.trim());
-  const freqOf=t=>{const g=tags(t);if(g.includes('auto'))return null;if(g.includes('diaria'))return 'd';if(g.includes('semanal'))return 's';if(g.includes('mensual'))return 'm';return null;};
+  const freqOf=t=>{const e=low(t.etiquetas);if(e.includes('auto'))return null;if(e.includes('diaria'))return 'd';if(e.includes('semanal'))return 's';if(e.includes('mensual'))return 'm';return null;};
   const today=new Date();today.setHours(0,0,0,0);
   const horizon=new Date(today.getFullYear()+1,today.getMonth(),today.getDate());
   const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const existing=new Set(DB.tareas.map(t=>t.proyectoId+'|'+t.titulo+'|'+t.fechaLimite));
   const CAP=800;const nuevas=[];
-  const sources=DB.tareas.filter(t=>t.fechaLimite&&freqOf(t));
+  const conFreq=DB.tareas.filter(t=>freqOf(t));
+  const sources=conFreq.filter(t=>t.fechaLimite);
+  const sinFecha=conFreq.filter(t=>!t.fechaLimite);
   for(const src of sources){
     const f=freqOf(src);const anchor=new Date(src.fechaLimite+'T00:00:00');const dom=anchor.getDate();const dates=[];
     if(f==='d'){let d=new Date(Math.max(anchor.getTime(),today.getTime()));d.setDate(d.getDate()+1);while(d<=horizon){dates.push(new Date(d));d.setDate(d.getDate()+1);}}
@@ -913,8 +915,15 @@ async function genRecurrencias(mode){
       if(nuevas.length>=CAP)break;}
     if(nuevas.length>=CAP)break;
   }
-  if(!nuevas.length){if(mode==='manual')alert('No hay nuevas repeticiones que crear.');return;}
-  if(mode==='manual'&&!confirm('Se crearán '+nuevas.length+' tareas recurrentes'+(nuevas.length>=CAP?' (máximo por tanda; vuelve a generar para continuar)':'')+'. ¿Continuar?'))return;
+  if(!nuevas.length){
+    if(mode==='manual'){
+      if(!conFreq.length)alert('No encontré tareas con etiqueta Diaria, Semanal o Mensual.');
+      else if(!sources.length)alert('Encontré '+conFreq.length+' tarea(s) recurrente(s) pero SIN fecha límite. Ponles fecha para poder repetirlas.');
+      else alert('Todo al día: no hay nuevas repeticiones que crear'+(sinFecha.length?' ('+sinFecha.length+' sin fecha límite se saltan)':'')+'.');
+    }
+    return;
+  }
+  if(mode==='manual'&&!confirm('Se crearán '+nuevas.length+' tareas recurrentes'+(nuevas.length>=CAP?' (máximo por tanda; vuelve a generar para continuar)':'')+(sinFecha.length?' ('+sinFecha.length+' recurrentes sin fecha se saltan)':'')+'. ¿Continuar?'))return;
   nuevas.forEach(nt=>{DB.tareas.push(nt);dbSave('tareas',nt);});
   if(mode==='manual'){alert('Creadas '+nuevas.length+' tareas recurrentes.');refreshAll();}
 }
