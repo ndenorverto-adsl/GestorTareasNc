@@ -340,7 +340,7 @@ a{color:#5648e0;}
         </div>
         <input class="form-control" id="fTarBuscar" placeholder="Buscar tarea…" oninput="renderTareas()">
         <select class="form-select" id="fTarCli" onchange="renderTareas()"><option value="">Todos los clientes</option></select>
-        <select class="form-select" id="fTarProyecto" onchange="renderTareas()"><option value="">Todos los proyectos</option></select>
+        <input class="form-control" id="fTarProyecto" list="fTarProyectoList" placeholder="Buscar proyecto por nombre…" oninput="renderTareas()" autocomplete="off" style="min-width:200px;"><datalist id="fTarProyectoList"></datalist>
         <select class="form-select" id="fTarResp" onchange="renderTareas()"><option value="">Todas las personas</option></select>
         <select class="form-select" id="fTarPrio" onchange="renderTareas()"><option value="">Toda prioridad</option><option>Alta</option><option>Media</option><option>Baja</option></select>
         <select class="form-select" id="fTarGroup" onchange="renderTareas()"><option value="">Sin agrupar</option><option value="proyecto">Agrupar: Proyecto</option><option value="cliente">Agrupar: Cliente</option><option value="responsable">Agrupar: Persona</option></select>
@@ -617,15 +617,15 @@ function renderCalendario(){
 function refreshTarFilters(){
   const fcl=document.getElementById('fTarCli'),curc=fcl.value;
   fcl.innerHTML='<option value="">Todos los clientes</option>'+DB.clientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(c=>`<option value="${c.id}" ${c.id===curc?'selected':''}>${esc(c.nombre)}</option>`).join('');
-  const fp=document.getElementById('fTarProyecto'),cur=fp.value;
-  fp.innerHTML='<option value="">Todos los proyectos</option>'+DB.proyectos.map(p=>`<option value="${p.id}" ${p.id===cur?'selected':''}>${esc(p.nombre)}</option>`).join('');
+  const dl=document.getElementById('fTarProyectoList');
+  if(dl&&dl.children.length!==DB.proyectos.length)dl.innerHTML=DB.proyectos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(p=>`<option value="${esc(p.nombre)}"></option>`).join('');
   const fr=document.getElementById('fTarResp'),curr=fr.value,resp=allResponsables();
   fr.innerHTML='<option value="">Todos los responsables</option>'+resp.map(r=>`<option ${r===curr?'selected':''}>${esc(r)}</option>`).join('');
 }
 function filteredTareas(){
   refreshTarFilters();
-  const fc=document.getElementById('fTarCli').value,fp=document.getElementById('fTarProyecto').value,fr=document.getElementById('fTarResp').value,fpr=document.getElementById('fTarPrio').value,q=norm(document.getElementById('fTarBuscar').value);
-  return DB.tareas.filter(t=>(!fc||taskCli(t)===fc)&&(!fp||t.proyectoId===fp)&&(!fr||(t.responsable||'')===fr)&&(!fpr||t.prioridad===fpr)&&(!q||norm(t.titulo).includes(q)||norm(proyName(t.proyectoId)).includes(q)||norm(t.etiquetas).includes(q)));
+  const fc=document.getElementById('fTarCli').value,fp=norm(document.getElementById('fTarProyecto').value),fr=document.getElementById('fTarResp').value,fpr=document.getElementById('fTarPrio').value,q=norm(document.getElementById('fTarBuscar').value);
+  return DB.tareas.filter(t=>(!fc||taskCli(t)===fc)&&(!fp||norm(proyName(t.proyectoId)).includes(fp))&&(!fr||(t.responsable||'')===fr)&&(!fpr||t.prioridad===fpr)&&(!q||norm(t.titulo).includes(q)||norm(proyName(t.proyectoId)).includes(q)||norm(t.etiquetas).includes(q)));
 }
 function tarGroupKey(t,mode){if(mode==='proyecto')return proyName(t.proyectoId);if(mode==='cliente'){const p=DB.proyectos.find(x=>x.id===t.proyectoId);return p?cliName(p.clienteId):'—';}if(mode==='responsable')return t.responsable||'Sin asignar';return '';}
 function taskCard(t){const w=whenLabel(t.fechaLimite);
@@ -838,7 +838,7 @@ function openAutomations(){const c=DB.config||{};
     row('avisarDesbloqueo','Avisar de desbloqueos','Al completar una tarea, avisa si con ello se han desbloqueado otras que dependían de ella.')+
     row('avisarSobrecarga','Avisar de sobrecarga','Al asignar/mover trabajo, avisa si un responsable supera 12 tareas abiertas.')+
     row('recurrencia','Generar tareas recurrentes','Las tareas con etiqueta Diaria, Semanal o Mensual se duplican hacia delante (12 meses) el mismo día. Cada copia se cierra solo al marcarla Hecha. Necesitan fecha límite.')+
-    '<div class="col-12 mt-2"><button class="btn btn-primary btn-sm" onclick="genRecurrencias(\'manual\')"><i class="bi bi-arrow-repeat me-1"></i>Generar recurrencias ahora</button></div>',
+    '<div class="col-12 mt-2"><button class="btn btn-primary btn-sm" onclick="genRecurrencias(\'manual\')"><i class="bi bi-arrow-repeat me-1"></i>Generar recurrencias ahora</button> <button class="btn btn-outline-secondary btn-sm" onclick="limpiarDuplicados()"><i class="bi bi-eraser me-1"></i>Limpiar duplicados</button></div>',
     ()=>{entityModal().hide();});
   document.getElementById('entitySave').textContent='Cerrar';
 }
@@ -900,17 +900,18 @@ async function genRecurrencias(mode){
   const today=new Date();today.setHours(0,0,0,0);
   const horizon=new Date(today.getFullYear()+1,today.getMonth(),today.getDate());
   const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const existing=new Set(DB.tareas.map(t=>t.proyectoId+'|'+t.titulo+'|'+t.fechaLimite));
+  const existing=new Set(DB.tareas.map(t=>t.titulo+'|'+t.fechaLimite));
   const CAP=800;const nuevas=[];
   const conFreq=DB.tareas.filter(t=>freqOf(t));
-  const sources=conFreq.filter(t=>t.fechaLimite);
   const sinFecha=conFreq.filter(t=>!t.fechaLimite);
+  const _vistos=new Set();
+  const sources=conFreq.filter(t=>t.fechaLimite).filter(t=>{const k=(t.titulo||'').trim();if(_vistos.has(k))return false;_vistos.add(k);return true;});
   for(const src of sources){
     const f=freqOf(src);const anchor=new Date(src.fechaLimite+'T00:00:00');const dom=anchor.getDate();const dates=[];
     if(f==='d'){let d=new Date(Math.max(anchor.getTime(),today.getTime()));d.setDate(d.getDate()+1);while(d<=horizon){dates.push(new Date(d));d.setDate(d.getDate()+1);}}
     else if(f==='s'){let d=new Date(anchor);while(d<=today)d.setDate(d.getDate()+7);while(d<=horizon){dates.push(new Date(d));d.setDate(d.getDate()+7);}}
     else{let d=new Date(anchor);const nxt=()=>{let mo=d.getMonth()+1,yr=d.getFullYear();if(mo>11){mo=0;yr++;}const last=new Date(yr,mo+1,0).getDate();d=new Date(yr,mo,Math.min(dom,last));};while(d<=today)nxt();while(d<=horizon){dates.push(new Date(d));nxt();}}
-    for(const dd of dates){const key=src.proyectoId+'|'+src.titulo+'|'+iso(dd);if(existing.has(key))continue;existing.add(key);
+    for(const dd of dates){const key=src.titulo+'|'+iso(dd);if(existing.has(key))continue;existing.add(key);
       nuevas.push({id:uid(),titulo:src.titulo,proyectoId:src.proyectoId,estado:'Por hacer',responsable:src.responsable,equipo:src.equipo,prioridad:src.prioridad,fechaLimite:iso(dd),estimacion:src.estimacion,etiquetas:(src.etiquetas?src.etiquetas+', auto':'auto'),checklist:(src.checklist||[]).map(c=>({t:c.t,done:false})),dependeDe:'',enlaces:src.enlaces||'',notas:src.notas||''});
       if(nuevas.length>=CAP)break;}
     if(nuevas.length>=CAP)break;
@@ -926,6 +927,19 @@ async function genRecurrencias(mode){
   if(mode==='manual'&&!confirm('Se crearán '+nuevas.length+' tareas recurrentes'+(nuevas.length>=CAP?' (máximo por tanda; vuelve a generar para continuar)':'')+(sinFecha.length?' ('+sinFecha.length+' recurrentes sin fecha se saltan)':'')+'. ¿Continuar?'))return;
   nuevas.forEach(nt=>{DB.tareas.push(nt);dbSave('tareas',nt);});
   if(mode==='manual'){alert('Creadas '+nuevas.length+' tareas recurrentes.');refreshAll();}
+}
+async function limpiarDuplicados(){
+  const esRec=t=>{const e=(t.etiquetas||'').toLowerCase();return e.includes('auto')||e.includes('diaria')||e.includes('semanal')||e.includes('mensual');};
+  const cand=DB.tareas.filter(t=>t.fechaLimite&&esRec(t));
+  const ordered=cand.slice().sort((a,b)=>((a.etiquetas||'').toLowerCase().includes('auto')?1:0)-((b.etiquetas||'').toLowerCase().includes('auto')?1:0));
+  const seen=new Set();const dups=[];
+  ordered.forEach(t=>{const k=(t.titulo||'').trim()+'|'+t.fechaLimite;if(seen.has(k))dups.push(t);else seen.add(k);});
+  if(!dups.length){alert('No hay tareas recurrentes duplicadas (mismo título y misma fecha).');return;}
+  if(!confirm('Se eliminarán '+dups.length+' tareas duplicadas (mismo título y misma fecha, conservando una de cada). ¿Continuar?'))return;
+  const ids=new Set(dups.map(t=>t.id));
+  dups.forEach(t=>dbDel('tareas',t.id));
+  DB.tareas=DB.tareas.filter(t=>!ids.has(t.id));
+  alert('Eliminadas '+dups.length+' tareas duplicadas.');refreshAll();
 }
 initTheme();
 /* Init · autenticación + carga */
