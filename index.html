@@ -36,6 +36,13 @@
 [data-theme="dark"] .chip-gray{background:#2A2740;color:#C9C4E2;}
 [data-theme="dark"] .chip-muted{background:#2A2740;color:#C9C4E2;}
 [data-theme="dark"] .tcard select,[data-theme="dark"] .lrow select{background:var(--nc-surface);color:var(--nc-ink);}
+.rc{display:inline-block;padding:.12rem .5rem;border-radius:999px;font-size:.72rem;font-weight:600;white-space:nowrap;}
+.rc-mej{background:#E4F7E9;color:#17843f;}.rc-emp{background:#FBE9E9;color:#c0322f;}.rc-sin{background:#ECEAF3;color:#514C68;}.rc-pen{background:#FCEFD8;color:#9a6a12;}.rc-rev{background:#EAE7FB;color:#5a4ad1;}
+[data-theme="dark"] .rc-mej{background:#173a26;color:#8ee0a6;}[data-theme="dark"] .rc-emp{background:#3a1a1c;color:#f0a3a3;}[data-theme="dark"] .rc-sin{background:#2a2740;color:#c9c4e2;}[data-theme="dark"] .rc-pen{background:#3a2f14;color:#e8c98a;}[data-theme="dark"] .rc-rev{background:#241f45;color:#b7abf0;}
+.camb-tbl{width:100%;border-collapse:collapse;font-size:.85rem;}
+.camb-tbl th{text-align:left;font-size:.7rem;color:var(--nc-muted);text-transform:uppercase;letter-spacing:.03em;padding:.4rem .5rem;border-bottom:1px solid var(--nc-border);white-space:nowrap;}
+.camb-tbl td{padding:.5rem .5rem;border-bottom:1px solid var(--nc-border);vertical-align:top;}
+.camb-tbl tbody tr:hover{background:var(--nc-elev);}
 body{background:var(--nc-bg);color:var(--nc-ink);font-family:'Noto Sans',system-ui,sans-serif;}
 h1,h2,h3,h4,h5{font-family:'Space Grotesk',sans-serif;}
 .mono{font-family:'Space Mono',monospace;}
@@ -256,6 +263,7 @@ a{color:#5648e0;}
       <button data-view="cronograma"><i class="bi bi-bar-chart-steps"></i> Cronograma <span class="dot"></span></button>
       <button data-view="tareas"><i class="bi bi-check2-square"></i> Tareas <span class="dot"></span></button>
       <button data-view="informes"><i class="bi bi-bar-chart"></i> Informes <span class="dot"></span></button>
+      <button data-view="cambios"><i class="bi bi-clock-history"></i> Cambios <span class="dot"></span></button>
     </nav>
     <div class="side-foot">
       <div class="ttl">Datos</div>
@@ -361,6 +369,12 @@ a{color:#5648e0;}
       <div id="repBody"></div>
     </section>
 
+    <section id="view-cambios" class="d-none">
+      <div class="topbar"><div><h1>Registro de cambios</h1><div class="sub">Repositorio de optimizaciones aplicadas y sus resultados</div></div><button class="btn btn-primary" onclick="openCambio(null,'')"><i class="bi bi-plus-lg me-1"></i>Nuevo cambio</button></div>
+      <div id="cambFilters"></div>
+      <div id="cambBody"></div>
+    </section>
+
     <section id="view-cronograma" class="d-none">
       <div class="topbar"><div><h1>Cronograma</h1><div class="sub">Timeline de tareas por fecha límite (Gantt) · filtra para personalizar</div></div></div>
       <div id="cronoBody"></div>
@@ -420,6 +434,8 @@ const EST_TAR=['Backlog','Por hacer','En curso','En revisión','Hecha'];
 const TIPOS=['Landing','Campaña Ads','Informe','Web','Branding','Contrato/Admin','Otro'];
 const SECTORES=['Agua/Utilities','Seguridad','Teleco','Energía','Salud','Legal','Otro'];
 const PRIOS=['Alta','Media','Baja'];
+const TIPOS_CAMBIO=['Puja','Presupuesto','Segmentación','Audiencia','Creatividad','Copy','Landing/CRO','Keywords','Estructura','Tracking','Otro'];
+const RES_CAMBIO=['Pendiente de medir','Mejora','Sin cambio','Empeora','Revertido'];
 const WIP={'En curso':8,'En revisión':6};
 const CHIP={'Onboarding':'amber','Activo':'lime','En pausa':'gray','Cerrado':'muted','Propuesta':'gray','Aprobado':'blue','En curso':'purple','En revisión':'amber','Entregado':'green','Pausado':'muted','Backlog':'gray','Por hacer':'blue','Hecha':'green','Alta':'red','Media':'amber','Baja':'gray'};
 const chipClass=e=>'chip-'+(CHIP[e]||'gray');
@@ -434,11 +450,11 @@ let DB={clientes:[],proyectos:[],tareas:[],savedViews:[],config:{}};
 function _num(v){return (v===''||v===undefined||v===null)?null:v;}
 function _dt(v){return v?v:null;}
 function mapCli(c){return {id:c.id,nombre:c.nombre,estado:c.estado,sector:c.sector,responsable:c.responsable,web:c.web,contacto:c.contacto,email:c.email,telefono:c.telefono,enlaces:c.enlaces,notas:c.notas};}
-function mapProy(p){return {id:p.id,nombre:p.nombre,cliente_id:p.clienteId||null,estado:p.estado,tipo:p.tipo,responsable:p.responsable,fecha_inicio:_dt(p.fechaInicio),fecha_entrega:_dt(p.fechaEntrega),prioridad:p.prioridad,fee:_num(p.fee),enlaces:p.enlaces,notas:p.notas,comentarios:p.comentarios||[]};}
+function mapProy(p){return {id:p.id,nombre:p.nombre,cliente_id:p.clienteId||null,estado:p.estado,tipo:p.tipo,responsable:p.responsable,fecha_inicio:_dt(p.fechaInicio),fecha_entrega:_dt(p.fechaEntrega),prioridad:p.prioridad,fee:_num(p.fee),enlaces:p.enlaces,notas:p.notas,comentarios:p.comentarios||[],cambios:p.cambios||[]};}
 function mapTarea(t){return {id:t.id,titulo:t.titulo,proyecto_id:t.proyectoId||null,estado:t.estado,responsable:t.responsable,equipo:t.equipo,prioridad:t.prioridad,fecha_limite:_dt(t.fechaLimite),estimacion:_num(t.estimacion),etiquetas:t.etiquetas,checklist:t.checklist||[],depende_de:t.dependeDe||null,enlaces:t.enlaces,notas:t.notas};}
 function mapView(v){return {id:v.id,name:v.name,config:{viewMode:v.viewMode,group:v.group,proyecto:v.proyecto,resp:v.resp,prio:v.prio,buscar:v.buscar}};}
 function fromCli(r){return {id:r.id,nombre:r.nombre,estado:r.estado,sector:r.sector,responsable:r.responsable||'',web:r.web||'',contacto:r.contacto||'',email:r.email||'',telefono:r.telefono||'',enlaces:r.enlaces||'',notas:r.notas||''};}
-function fromProy(r){return {id:r.id,nombre:r.nombre,clienteId:r.cliente_id||'',estado:r.estado,tipo:r.tipo,responsable:r.responsable||'',fechaInicio:r.fecha_inicio||'',fechaEntrega:r.fecha_entrega||'',prioridad:r.prioridad,fee:(r.fee==null?'':String(r.fee)),enlaces:r.enlaces||'',notas:r.notas||'',comentarios:r.comentarios||[]};}
+function fromProy(r){return {id:r.id,nombre:r.nombre,clienteId:r.cliente_id||'',estado:r.estado,tipo:r.tipo,responsable:r.responsable||'',fechaInicio:r.fecha_inicio||'',fechaEntrega:r.fecha_entrega||'',prioridad:r.prioridad,fee:(r.fee==null?'':String(r.fee)),enlaces:r.enlaces||'',notas:r.notas||'',comentarios:r.comentarios||[],cambios:r.cambios||[]};}
 function fromTarea(r){return {id:r.id,titulo:r.titulo,proyectoId:r.proyecto_id||'',estado:r.estado,responsable:r.responsable||'',equipo:r.equipo||'',prioridad:r.prioridad,fechaLimite:r.fecha_limite||'',estimacion:(r.estimacion==null?'':String(r.estimacion)),etiquetas:r.etiquetas||'',checklist:r.checklist||[],dependeDe:r.depende_de||'',enlaces:r.enlaces||'',notas:r.notas||''};}
 function fromView(r){return Object.assign({id:r.id,name:r.name},r.config||{});}
 async function dbSave(entity,rec){if(!sb)return;const m={clientes:mapCli,proyectos:mapProy,tareas:mapTarea,saved_views:mapView};const {error}=await sb.from(entity).upsert(m[entity](rec));if(error)console.error('save '+entity,error);}
@@ -471,7 +487,7 @@ function setTarView(m){tarViewMode=m;document.querySelectorAll('#tarViewSeg butt
 function switchView(v){
   currentView=v;
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
-  ['dashboard','mitrabajo','clientes','proyectos','calendario','cronograma','tareas','informes'].forEach(x=>document.getElementById('view-'+x).classList.toggle('d-none',x!==v));
+  ['dashboard','mitrabajo','clientes','proyectos','calendario','cronograma','tareas','informes','cambios'].forEach(x=>document.getElementById('view-'+x).classList.toggle('d-none',x!==v));
   refreshAll();
   const oc=bootstrap.Offcanvas.getInstance(document.getElementById('sidebar'));if(oc)oc.hide();
 }
@@ -486,6 +502,7 @@ function refreshAll(){
   else if(currentView==='cronograma')renderCronograma();
   else if(currentView==='tareas')renderTareas();
   else if(currentView==='informes')renderInformes();
+  else if(currentView==='cambios')renderCambios();
   const det=document.getElementById('proyDetail');
   if(det.classList.contains('show')&&currentDetailId){const p=DB.proyectos.find(x=>x.id===currentDetailId);if(p){document.getElementById('proyDetailBody').innerHTML=detailBody(p);}else{bootstrap.Offcanvas.getInstance(det)?.hide();}}
 }
@@ -697,7 +714,10 @@ function detailBody(p){
   ${rows}
   <div class="section-title" style="font-size:.95rem;margin-top:1.3rem;">Actualizaciones</div>
   <div class="qadd"><input class="form-control form-control-sm" id="updInput" placeholder="Escribe una actualización…" onkeydown="if(event.key==='Enter')addUpdate('${p.id}')"><button class="btn btn-primary btn-sm" onclick="addUpdate('${p.id}')"><i class="bi bi-send"></i></button></div>
-  ${upsHtml}`;
+  ${upsHtml}
+  <div class="section-title" style="font-size:.95rem;margin-top:1.3rem;">Registro de cambios (${(p.cambios||[]).length})</div>
+  <div class="mb-2"><button class="btn btn-primary btn-sm" onclick="openCambio(null,'${p.id}')"><i class="bi bi-plus-lg me-1"></i>Añadir cambio</button></div>
+  ${cambiosPanelHtml(p)}`;
 }
 function toggleCheck(tid,i){const t=DB.tareas.find(x=>x.id===tid);if(t&&t.checklist&&t.checklist[i]){t.checklist[i].done=!t.checklist[i].done;dbSave('tareas',t);refreshAll();}}
 function addUpdate(pid){const inp=document.getElementById('updInput');if(!inp)return;const v=inp.value.trim();if(!v)return;const p=DB.proyectos.find(x=>x.id===pid);if(!p)return;(p.comentarios=p.comentarios||[]).push({txt:v,ts:Date.now()});dbSave('proyectos',p);refreshAll();}
@@ -942,6 +962,59 @@ async function limpiarDuplicados(){
   alert('Eliminadas '+dups.length+' tareas duplicadas.');refreshAll();
 }
 initTheme();
+function cambiosAll(){return DB.proyectos.flatMap(p=>(p.cambios||[]).map(c=>Object.assign({proyectoId:p.id,clienteId:p.clienteId},c)));}
+function resChip(r){return 'rc '+({'Mejora':'rc-mej','Empeora':'rc-emp','Sin cambio':'rc-sin','Pendiente de medir':'rc-pen','Revertido':'rc-rev'}[r]||'rc-sin');}
+function cambFilters(){return PREFS['camb']||(PREFS['camb']={cliente:'',proyecto:'',responsable:'',tipo:'',resultado:''});}
+function cambApply(){const f=cambFilters();f.cliente=_val('cambCli');f.proyecto=_val('cambProy');f.responsable=_val('cambResp');f.tipo=_val('cambTipo');f.resultado=_val('cambRes');savePrefs();renderCambios();}
+function cambClear(){PREFS['camb']={cliente:'',proyecto:'',responsable:'',tipo:'',resultado:''};savePrefs();renderCambios();}
+function cambMatch(c,f){if(f.cliente&&c.clienteId!==f.cliente)return false;if(f.proyecto&&!norm(proyName(c.proyectoId)).includes(norm(f.proyecto)))return false;if(f.responsable&&(c.responsable||'')!==f.responsable)return false;if(f.tipo&&c.tipo!==f.tipo)return false;if(f.resultado&&c.resultado!==f.resultado)return false;return true;}
+function cambFilterBar(){const f=cambFilters();const cli=DB.clientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre));const o=(v,txt,cur)=>`<option value="${esc(v)}" ${v===cur?'selected':''}>${esc(txt)}</option>`;const resp=[...new Set(cambiosAll().map(c=>c.responsable).filter(Boolean))].sort();
+  return `<div class="filters"><select class="form-select" id="cambCli" onchange="cambApply()"><option value="">Todos los clientes</option>${cli.map(c=>o(c.id,c.nombre,f.cliente)).join('')}</select><input class="form-control" id="cambProy" list="cambProyList" placeholder="Buscar proyecto…" oninput="cambApply()" autocomplete="off" value="${esc(f.proyecto)}" style="min-width:160px;"><datalist id="cambProyList">${DB.proyectos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(p=>`<option value="${esc(p.nombre)}"></option>`).join('')}</datalist><select class="form-select" id="cambResp" onchange="cambApply()"><option value="">Todos los responsables</option>${resp.map(r=>o(r,r,f.responsable)).join('')}</select><select class="form-select" id="cambTipo" onchange="cambApply()"><option value="">Todo tipo</option>${TIPOS_CAMBIO.map(t=>o(t,t,f.tipo)).join('')}</select><select class="form-select" id="cambRes" onchange="cambApply()"><option value="">Todo resultado</option>${RES_CAMBIO.map(r=>o(r,r,f.resultado)).join('')}</select><button class="icon-btn" title="Limpiar filtros" onclick="cambClear()"><i class="bi bi-x-circle"></i></button></div>`;}
+function renderCambios(){
+  document.getElementById('cambFilters').innerHTML=cambFilterBar();
+  const f=cambFilters();const body=document.getElementById('cambBody');
+  const todos=cambiosAll();
+  if(!todos.length){body.innerHTML='<div class="empty"><i class="bi bi-clock-history"></i>Aún no hay cambios registrados. Añade el primero con «Nuevo cambio», o desde el detalle de un proyecto.</div>';return;}
+  const all=todos.filter(c=>cambMatch(c,f)).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  const n=all.length,mej=all.filter(c=>c.resultado==='Mejora').length,pend=all.filter(c=>c.resultado==='Pendiente de medir').length,pct=n?Math.round(mej/n*100):0;
+  const kpis=`<div class="row g-3 mb-3"><div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-clock-history"></i>Cambios</div><div class="num">${n}</div></div></div><div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-graph-up-arrow"></i>Con mejora</div><div class="num">${pct}%</div><div class="foot">${mej} de ${n}</div></div></div><div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-hourglass-split"></i>Pendientes</div><div class="num">${pend}</div></div></div><div class="col-6 col-lg-3"><div class="card-nc kpi"><div class="label"><i class="bi bi-kanban"></i>Proyectos</div><div class="num">${new Set(all.map(c=>c.proyectoId)).size}</div></div></div></div>`;
+  const rows=all.map(c=>`<tr><td class="mono" style="white-space:nowrap;">${c.fecha?fmtDate(c.fecha):'—'}</td><td>${esc(cliName(c.clienteId))}</td><td>${esc(proyName(c.proyectoId))}</td><td><span class="rc rc-sin">${esc(c.tipo||'—')}</span></td><td>${esc(c.descripcion||'')}${c.hipotesis?`<div class="text-muted" style="font-size:.78rem;">💡 ${esc(c.hipotesis)}</div>`:''}</td><td>${c.kpi?esc(c.kpi):'—'}${(c.antes||c.despues)?`<div class="mono" style="font-size:.78rem;">${esc(c.antes||'?')} → ${esc(c.despues||'?')}</div>`:''}</td><td><span class="${resChip(c.resultado)}">${esc(c.resultado||'—')}</span></td><td>${esc(c.responsable||'—')}</td><td style="white-space:nowrap;"><button class="icon-btn" style="width:26px;height:26px;" onclick="openCambio('${c.id}','${c.proyectoId}')"><i class="bi bi-pencil"></i></button><button class="icon-btn danger" style="width:26px;height:26px;" onclick="delCambio('${c.proyectoId}','${c.id}')"><i class="bi bi-trash"></i></button></td></tr>`).join('');
+  body.innerHTML=kpis+`<div class="card-nc p-2 p-md-3" style="overflow-x:auto;"><table class="camb-tbl"><thead><tr><th>Fecha</th><th>Cliente</th><th>Proyecto</th><th>Tipo</th><th>Descripción</th><th>KPI</th><th>Resultado</th><th>Resp.</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="9" class="text-muted" style="padding:1rem;">Sin cambios con estos filtros.</td></tr>'}</tbody></table></div>`;
+}
+function cambiosPanelHtml(p){const cs=(p.cambios||[]).slice().sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  if(!cs.length)return '<div class="text-muted" style="font-size:.84rem;">Sin cambios registrados.</div>';
+  return cs.map(c=>`<div class="upd"><div class="d-flex justify-content-between align-items-start gap-2"><div><span class="rc rc-sin">${esc(c.tipo||'—')}</span> <span class="mono" style="font-size:.74rem;color:var(--nc-muted);">${c.fecha?fmtDate(c.fecha):''}</span> <span class="${resChip(c.resultado)}">${esc(c.resultado||'')}</span></div><div style="white-space:nowrap;"><button class="icon-btn" style="width:24px;height:24px;" onclick="openCambio('${c.id}','${p.id}')"><i class="bi bi-pencil"></i></button><button class="icon-btn danger" style="width:24px;height:24px;" onclick="delCambio('${p.id}','${c.id}')"><i class="bi bi-trash"></i></button></div></div><div style="margin-top:.25rem;">${esc(c.descripcion||'')}</div>${c.hipotesis?`<div class="text-muted" style="font-size:.78rem;">💡 ${esc(c.hipotesis)}</div>`:''}${(c.kpi||c.antes||c.despues)?`<div class="mono" style="font-size:.76rem;color:var(--nc-muted);margin-top:.15rem;">${esc(c.kpi||'')} ${(c.antes||c.despues)?`(${esc(c.antes||'?')} → ${esc(c.despues||'?')})`:''}</div>`:''}</div>`).join('');
+}
+function openCambio(id,proyectoId){
+  let c={},pid=proyectoId||'';
+  if(id){const found=cambiosAll().find(x=>x.id===id);if(found){c=found;pid=found.proyectoId;}}
+  const proj=DB.proyectos.find(x=>x.id===pid);
+  const projList=[{id:'',nombre:'— Selecciona proyecto —'}].concat(DB.proyectos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(p=>({id:p.id,nombre:p.nombre+' · '+cliName(p.clienteId)})));
+  const today=new Date().toISOString().slice(0,10);
+  openModal(id?'Editar cambio':'Nuevo cambio',
+    field('Fecha','fecha','date',c.fecha||today)+
+    field('Proyecto / campaña','proyecto','selectId',pid,projList)+
+    field('Responsable','responsable','text',c.responsable||(proj?proj.responsable:'')||'')+
+    field('Tipo de cambio','tipo','select',c.tipo||TIPOS_CAMBIO[0],TIPOS_CAMBIO)+
+    field('Descripción del cambio','descripcion','textarea',c.descripcion||'',null,true)+
+    field('Hipótesis / objetivo','hipotesis','textarea',c.hipotesis||'',null,true)+
+    field('KPI afectado','kpi','text',c.kpi||'')+
+    field('Periodo de medición','periodo','text',c.periodo||'')+
+    field('Valor antes','antes','text',c.antes||'')+
+    field('Valor después','despues','text',c.despues||'')+
+    field('Resultado','resultado','select',c.resultado||RES_CAMBIO[0],RES_CAMBIO)+
+    field('Enlaces (informe, captura…)','enlaces','text',c.enlaces||'')+
+    field('Notas','notas','textarea',c.notas||'',null,true),
+    ()=>saveCambio(id));
+}
+function saveCambio(id){const d=formData();const pid=d.proyecto;const p=DB.proyectos.find(x=>x.id===pid);
+  if(!p){alert('Selecciona un proyecto para el cambio.');return;}
+  const c={id:id||uid(),fecha:d.fecha||'',responsable:d.responsable||'',tipo:d.tipo||'',descripcion:d.descripcion||'',hipotesis:d.hipotesis||'',kpi:d.kpi||'',periodo:d.periodo||'',antes:d.antes||'',despues:d.despues||'',resultado:d.resultado||'',enlaces:d.enlaces||'',notas:d.notas||''};
+  if(id){DB.proyectos.forEach(pp=>{const arr=pp.cambios||[];const i=arr.findIndex(x=>x.id===id);if(i>=0&&pp.id!==pid){arr.splice(i,1);pp.cambios=arr;dbSave('proyectos',pp);}});}
+  p.cambios=p.cambios||[];const idx=p.cambios.findIndex(x=>x.id===c.id);if(idx>=0)p.cambios[idx]=c;else p.cambios.push(c);
+  dbSave('proyectos',p);entityModal().hide();refreshAll();
+}
+function delCambio(pid,id){if(!confirm('¿Eliminar este cambio del registro?'))return;const p=DB.proyectos.find(x=>x.id===pid);if(!p)return;p.cambios=(p.cambios||[]).filter(x=>x.id!==id);dbSave('proyectos',p);refreshAll();}
 /* Init · autenticación + carga */
 async function bootApp(){await loadAll();if(DB.config&&DB.config.recurrencia){try{await genRecurrencias('auto');}catch(e){console.warn('recurrencia',e);}}setupRealtime();document.getElementById('loginScreen').style.display='none';switchView('dashboard');}
 let _rtDone=false;
