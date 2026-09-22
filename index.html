@@ -860,7 +860,7 @@ function openAutomations(){const c=DB.config||{};
     row('avisarDesbloqueo','Avisar de desbloqueos','Al completar una tarea, avisa si con ello se han desbloqueado otras que dependían de ella.')+
     row('avisarSobrecarga','Avisar de sobrecarga','Al asignar/mover trabajo, avisa si un responsable supera 12 tareas abiertas.')+
     row('recurrencia','Generar tareas recurrentes','Las tareas con etiqueta Diaria, Semanal o Mensual se duplican hacia delante (12 meses) el mismo día. Cada copia se cierra solo al marcarla Hecha. Necesitan fecha límite.')+
-    '<div class="col-12 mt-2"><button class="btn btn-primary btn-sm" onclick="genRecurrencias(\'manual\')"><i class="bi bi-arrow-repeat me-1"></i>Generar recurrencias ahora</button> <button class="btn btn-outline-secondary btn-sm" onclick="limpiarDuplicados()"><i class="bi bi-eraser me-1"></i>Limpiar duplicados</button></div>',
+    '<div class="col-12 mt-2"><button class="btn btn-primary btn-sm" onclick="genRecurrencias(\'manual\')"><i class="bi bi-arrow-repeat me-1"></i>Generar recurrencias ahora</button> <button class="btn btn-outline-secondary btn-sm" onclick="limpiarDuplicados()"><i class="bi bi-eraser me-1"></i>Limpiar duplicados</button> <button class="btn btn-outline-danger btn-sm" onclick="limpiarRecurrentes()"><i class="bi bi-trash me-1"></i>Limpiar recurrentes</button></div>',
     ()=>{entityModal().hide();});
   document.getElementById('entitySave').textContent='Cerrar';
 }
@@ -958,13 +958,13 @@ async function limpiarDuplicados(){
   ordered.forEach(t=>{const k=(t.titulo||'').trim()+'|'+t.fechaLimite;if(seen.has(k))dups.push(t);else seen.add(k);});
   if(!dups.length){alert('No hay tareas recurrentes duplicadas (mismo título y misma fecha).');return;}
   if(!confirm('Se eliminarán '+dups.length+' tareas duplicadas (mismo título y misma fecha, conservando una de cada). ¿Continuar?'))return;
-  const ids=new Set(dups.map(t=>t.id));
-  dups.forEach(t=>dbDel('tareas',t.id));
-  DB.tareas=DB.tareas.filter(t=>!ids.has(t.id));
-  alert('Eliminadas '+dups.length+' tareas duplicadas.');refreshAll();
+  const ids=dups.map(t=>t.id);
+  try{await dbDelMany(ids);}catch(e){alert('Error al borrar: '+e.message);await loadAll();refreshAll();return;}
+  await loadAll();refreshAll();
+  alert('Eliminadas '+ids.length+' tareas duplicadas.');
 }
 initTheme();
-console.log('%cNC gestor · build 2026-09-22c · carga completa (paginada) + crear tarea','color:#6A5CFF;font-weight:bold;font-size:13px');
+console.log('%cNC gestor · build 2026-09-22d · limpiar recurrentes fiable','color:#6A5CFF;font-weight:bold;font-size:13px');
 function cambiosAll(){return DB.proyectos.flatMap(p=>(p.cambios||[]).map(c=>Object.assign({proyectoId:p.id,clienteId:p.clienteId},c)));}
 function resChip(r){return 'rc '+({'Mejora':'rc-mej','Empeora':'rc-emp','Sin cambio':'rc-sin','Pendiente de medir':'rc-pen','Revertido':'rc-rev'}[r]||'rc-sin');}
 function cambFilters(){return PREFS['camb']||(PREFS['camb']={cliente:'',proyecto:'',responsable:'',tipo:'',resultado:''});}
@@ -1043,6 +1043,18 @@ function importCambiosFromData(data){
   let msg='Importación completada: '+added+' añadidos, '+updated+' actualizados.';
   if(skipped.length)msg+='\nOmitidos ('+skipped.length+') por no reconocer proyecto/cliente: '+skipped.slice(0,10).join('; ')+(skipped.length>10?'…':'');
   alert(msg);
+}
+async function dbDelMany(ids){if(!sb||!ids.length)return;const chunk=(a,n)=>{const o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o;};for(const part of chunk(ids,150)){const {error}=await sb.from('tareas').delete().in('id',part);if(error)throw new Error(error.message||error.code||'error');}}
+async function limpiarRecurrentes(){
+  const isAuto=t=>(t.etiquetas||'').toLowerCase().split(',').map(x=>x.trim()).includes('auto');
+  const autos=DB.tareas.filter(isAuto);
+  if(!autos.length){alert('No hay tareas recurrentes automáticas (etiqueta «auto»).');return;}
+  if(!confirm('Se eliminarán '+autos.length+' tareas recurrentes automáticas y se DESACTIVARÁ la generación automática (para que no vuelvan al recargar). Las tareas origen (Diaria/Semanal/Mensual) se conservan. ¿Continuar?'))return;
+  DB.config=DB.config||{};DB.config.recurrencia=false;dbConfig();
+  const ids=autos.map(t=>t.id);
+  try{await dbDelMany(ids);}catch(e){alert('Error al limpiar: '+e.message);await loadAll();refreshAll();return;}
+  await loadAll();refreshAll();
+  alert('Limpieza completada: '+ids.length+' tareas recurrentes eliminadas. La generación automática queda DESACTIVADA (vuelve a activarla en Automatizaciones cuando quieras).');
 }
 /* Init · autenticación + carga */
 async function bootApp(){await loadAll();if(DB.config&&DB.config.recurrencia){try{await genRecurrencias('auto');}catch(e){console.warn('recurrencia',e);}}setupRealtime();document.getElementById('loginScreen').style.display='none';switchView('dashboard');}
