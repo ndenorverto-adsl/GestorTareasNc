@@ -461,7 +461,8 @@ let _saveErrs=[],_saveErrTimer=null;
 async function dbSave(entity,rec){if(!sb)return;const m={clientes:mapCli,proyectos:mapProy,tareas:mapTarea,saved_views:mapView};const {error}=await sb.from(entity).upsert(m[entity](rec));if(error){console.error('save '+entity,error);const msg=error.message||error.code||'error';const nombre={clientes:'cliente',proyectos:'proyecto',tareas:'tarea',saved_views:'vista'}[entity]||entity;let linea;if(/foreign key/i.test(msg))linea='La '+nombre+' apunta a un proyecto que no existe en la nube. Reimporta los proyectos a la nube (Exportar → Importar a la nube).';else linea='No se pudo guardar ('+nombre+'): '+msg;_saveErrs.push(linea);clearTimeout(_saveErrTimer);_saveErrTimer=setTimeout(()=>{const t=[...new Set(_saveErrs)].slice(0,4).join('\n\n');_saveErrs=[];alert('\u26a0\ufe0f No se guardó en la nube\n\n'+t+'\n\nLos cambios podrían perderse al recargar.');},700);}}
 async function dbDel(entity,id){if(!sb)return;const {error}=await sb.from(entity).delete().eq('id',id);if(error)console.error('del '+entity,error);}
 async function dbConfig(){if(!sb)return;const {error}=await sb.from('app_config').upsert({id:1,config:DB.config});if(error)console.error('config',error);}
-async function loadAll(){if(!sb)return;const [cli,pr,ta,sv,cfg]=await Promise.all([sb.from('clientes').select('*'),sb.from('proyectos').select('*'),sb.from('tareas').select('*'),sb.from('saved_views').select('*'),sb.from('app_config').select('config').eq('id',1).maybeSingle()]);DB.clientes=(cli.data||[]).map(fromCli);DB.proyectos=(pr.data||[]).map(fromProy);DB.tareas=(ta.data||[]).map(fromTarea);DB.savedViews=(sv.data||[]).map(fromView);DB.config=Object.assign({autoComplete:false,heredarResp:false,avisarDep:false},(cfg.data&&cfg.data.config)||{});}
+async function fetchAllRows(table){const size=1000;let from=0,all=[];while(true){const {data,error}=await sb.from(table).select('*').range(from,from+size-1);if(error){console.error('load '+table,error);break;}all=all.concat(data||[]);if(!data||data.length<size)break;from+=size;}return all;}
+async function loadAll(){if(!sb)return;const [cli,pr,ta,sv,cfg]=await Promise.all([fetchAllRows('clientes'),fetchAllRows('proyectos'),fetchAllRows('tareas'),sb.from('saved_views').select('*'),sb.from('app_config').select('config').eq('id',1).maybeSingle()]);DB.clientes=(cli||[]).map(fromCli);DB.proyectos=(pr||[]).map(fromProy);DB.tareas=(ta||[]).map(fromTarea);DB.savedViews=(sv.data||[]).map(fromView);DB.config=Object.assign({autoComplete:false,heredarResp:false,avisarDep:false},(cfg.data&&cfg.data.config)||{});}
 const uid=()=>(crypto.randomUUID?crypto.randomUUID():'id'+Date.now()+Math.random().toString(16).slice(2));
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -963,7 +964,7 @@ async function limpiarDuplicados(){
   alert('Eliminadas '+dups.length+' tareas duplicadas.');refreshAll();
 }
 initTheme();
-console.log('%cNC gestor · build 2026-09-22 (import por lotes + avisos)','color:#6A5CFF;font-weight:bold;font-size:13px');
+console.log('%cNC gestor · build 2026-09-22c · carga completa (paginada) + crear tarea','color:#6A5CFF;font-weight:bold;font-size:13px');
 function cambiosAll(){return DB.proyectos.flatMap(p=>(p.cambios||[]).map(c=>Object.assign({proyectoId:p.id,clienteId:p.clienteId},c)));}
 function resChip(r){return 'rc '+({'Mejora':'rc-mej','Empeora':'rc-emp','Sin cambio':'rc-sin','Pendiente de medir':'rc-pen','Revertido':'rc-rev'}[r]||'rc-sin');}
 function cambFilters(){return PREFS['camb']||(PREFS['camb']={cliente:'',proyecto:'',responsable:'',tipo:'',resultado:''});}
