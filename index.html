@@ -784,7 +784,7 @@ document.getElementById('confirmYes').addEventListener('click',()=>{if(confirmHa
 function exportData(){const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nc-proyectos-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);}
 function importData(ev){const file=ev.target.files[0];if(!file)return;const reader=new FileReader();
   reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!data||!Array.isArray(data.clientes)||!Array.isArray(data.proyectos)||!Array.isArray(data.tareas))throw new Error('formato');
-    const apply=async()=>{if(data.clientes.length)await sb.from('clientes').upsert(data.clientes.map(mapCli));if(data.proyectos.length)await sb.from('proyectos').upsert(data.proyectos.map(mapProy));if(data.tareas.length)await sb.from('tareas').upsert(data.tareas.map(mapTarea));await loadAll();refreshAll();alert('Importado a la nube: '+DB.clientes.length+' clientes, '+DB.proyectos.length+' proyectos, '+DB.tareas.length+' tareas.');};
+    const apply=async()=>{try{const chunk=(a,n)=>{const o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o;};const up=async(table,rows,mapper)=>{for(const part of chunk(rows,300)){const {error}=await sb.from(table).upsert(part.map(mapper));if(error)throw new Error(table+': '+(error.message||error.code||'error'));}};if(data.clientes.length)await up('clientes',data.clientes,mapCli);if(data.proyectos.length)await up('proyectos',data.proyectos,mapProy);if(data.tareas.length)await up('tareas',data.tareas,mapTarea);await loadAll();refreshAll();alert('Importado a la nube: '+DB.clientes.length+' clientes, '+DB.proyectos.length+' proyectos, '+DB.tareas.length+' tareas.');}catch(e){alert('\u26a0\ufe0f Error importando a la nube:\n'+e.message+'\n\nNo se aplicó todo. Corrige el dato indicado y reintenta.');}};
     if(DB.clientes.length||DB.proyectos.length||DB.tareas.length)askConfirm('Importar copia','Se reemplazarán todos los datos actuales por los del archivo. ¿Continuar?',apply);else apply();
   }catch(e){alert('El archivo no tiene un formato válido de copia de Next Conversion.');}ev.target.value='';};
   reader.readAsText(file);}
@@ -963,6 +963,7 @@ async function limpiarDuplicados(){
   alert('Eliminadas '+dups.length+' tareas duplicadas.');refreshAll();
 }
 initTheme();
+console.log('%cNC gestor · build 2026-09-22 (import por lotes + avisos)','color:#6A5CFF;font-weight:bold;font-size:13px');
 function cambiosAll(){return DB.proyectos.flatMap(p=>(p.cambios||[]).map(c=>Object.assign({proyectoId:p.id,clienteId:p.clienteId},c)));}
 function resChip(r){return 'rc '+({'Mejora':'rc-mej','Empeora':'rc-emp','Sin cambio':'rc-sin','Pendiente de medir':'rc-pen','Revertido':'rc-rev'}[r]||'rc-sin');}
 function cambFilters(){return PREFS['camb']||(PREFS['camb']={cliente:'',proyecto:'',responsable:'',tipo:'',resultado:''});}
