@@ -43,6 +43,10 @@
 .camb-tbl th{text-align:left;font-size:.7rem;color:var(--nc-muted);text-transform:uppercase;letter-spacing:.03em;padding:.4rem .5rem;border-bottom:1px solid var(--nc-border);white-space:nowrap;}
 .camb-tbl td{padding:.5rem .5rem;border-bottom:1px solid var(--nc-border);vertical-align:top;}
 .camb-tbl tbody tr:hover{background:var(--nc-elev);}
+.adj-row{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem;border:1px solid var(--nc-border);border-radius:8px;margin-bottom:.35rem;background:var(--nc-surface);}
+.adj-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.86rem;}
+.adj-size{font-size:.75rem;color:var(--nc-muted);white-space:nowrap;}
+.adj-act{display:flex;gap:.2rem;}
 body{background:var(--nc-bg);color:var(--nc-ink);font-family:'Noto Sans',system-ui,sans-serif;}
 h1,h2,h3,h4,h5{font-family:'Space Grotesk',sans-serif;}
 .mono{font-family:'Space Mono',monospace;}
@@ -451,11 +455,11 @@ function _num(v){return (v===''||v===undefined||v===null)?null:v;}
 function _dt(v){return v?v:null;}
 function mapCli(c){return {id:c.id,nombre:c.nombre,estado:c.estado,sector:c.sector,responsable:c.responsable,web:c.web,contacto:c.contacto,email:c.email,telefono:c.telefono,enlaces:c.enlaces,notas:c.notas};}
 function mapProy(p){return {id:p.id,nombre:p.nombre,cliente_id:p.clienteId||null,estado:p.estado,tipo:p.tipo,responsable:p.responsable,fecha_inicio:_dt(p.fechaInicio),fecha_entrega:_dt(p.fechaEntrega),prioridad:p.prioridad,fee:_num(p.fee),enlaces:p.enlaces,notas:p.notas,comentarios:p.comentarios||[],cambios:p.cambios||[]};}
-function mapTarea(t){return {id:t.id,titulo:t.titulo,proyecto_id:t.proyectoId||null,estado:t.estado,responsable:t.responsable,equipo:t.equipo,prioridad:t.prioridad,fecha_limite:_dt(t.fechaLimite),estimacion:_num(t.estimacion),etiquetas:t.etiquetas,checklist:t.checklist||[],depende_de:t.dependeDe||null,enlaces:t.enlaces,notas:t.notas};}
+function mapTarea(t){return {id:t.id,titulo:t.titulo,proyecto_id:t.proyectoId||null,estado:t.estado,responsable:t.responsable,equipo:t.equipo,prioridad:t.prioridad,fecha_limite:_dt(t.fechaLimite),estimacion:_num(t.estimacion),etiquetas:t.etiquetas,checklist:t.checklist||[],depende_de:t.dependeDe||null,enlaces:t.enlaces,notas:t.notas,adjuntos:t.adjuntos||[]};}
 function mapView(v){return {id:v.id,name:v.name,config:{viewMode:v.viewMode,group:v.group,proyecto:v.proyecto,resp:v.resp,prio:v.prio,buscar:v.buscar}};}
 function fromCli(r){return {id:r.id,nombre:r.nombre,estado:r.estado,sector:r.sector,responsable:r.responsable||'',web:r.web||'',contacto:r.contacto||'',email:r.email||'',telefono:r.telefono||'',enlaces:r.enlaces||'',notas:r.notas||''};}
 function fromProy(r){return {id:r.id,nombre:r.nombre,clienteId:r.cliente_id||'',estado:r.estado,tipo:r.tipo,responsable:r.responsable||'',fechaInicio:r.fecha_inicio||'',fechaEntrega:r.fecha_entrega||'',prioridad:r.prioridad,fee:(r.fee==null?'':String(r.fee)),enlaces:r.enlaces||'',notas:r.notas||'',comentarios:r.comentarios||[],cambios:r.cambios||[]};}
-function fromTarea(r){return {id:r.id,titulo:r.titulo,proyectoId:r.proyecto_id||'',estado:r.estado,responsable:r.responsable||'',equipo:r.equipo||'',prioridad:r.prioridad,fechaLimite:r.fecha_limite||'',estimacion:(r.estimacion==null?'':String(r.estimacion)),etiquetas:r.etiquetas||'',checklist:r.checklist||[],dependeDe:r.depende_de||'',enlaces:r.enlaces||'',notas:r.notas||''};}
+function fromTarea(r){return {id:r.id,titulo:r.titulo,proyectoId:r.proyecto_id||'',estado:r.estado,responsable:r.responsable||'',equipo:r.equipo||'',prioridad:r.prioridad,fechaLimite:r.fecha_limite||'',estimacion:(r.estimacion==null?'':String(r.estimacion)),etiquetas:r.etiquetas||'',checklist:r.checklist||[],dependeDe:r.depende_de||'',enlaces:r.enlaces||'',notas:r.notas||'',adjuntos:r.adjuntos||[]};}
 function fromView(r){return Object.assign({id:r.id,name:r.name},r.config||{});}
 let _saveErrs=[],_saveErrTimer=null;
 async function dbSave(entity,rec){if(!sb)return;const m={clientes:mapCli,proyectos:mapProy,tareas:mapTarea,saved_views:mapView};const {error}=await sb.from(entity).upsert(m[entity](rec));if(error){console.error('save '+entity,error);const msg=error.message||error.code||'error';const nombre={clientes:'cliente',proyectos:'proyecto',tareas:'tarea',saved_views:'vista'}[entity]||entity;let linea;if(/foreign key/i.test(msg))linea='La '+nombre+' apunta a un proyecto que no existe en la nube. Reimporta los proyectos a la nube (Exportar → Importar a la nube).';else linea='No se pudo guardar ('+nombre+'): '+msg;_saveErrs.push(linea);clearTimeout(_saveErrTimer);_saveErrTimer=setTimeout(()=>{const t=[...new Set(_saveErrs)].slice(0,4).join('\n\n');_saveErrs=[];alert('\u26a0\ufe0f No se guardó en la nube\n\n'+t+'\n\nLos cambios podrían perderse al recargar.');},700);}}
@@ -767,12 +771,13 @@ function openTarea(id){if(!DB.proyectos.length){alert('Crea antes un proyecto.')
   const depPid=t.proyectoId||DB.proyectos[0].id;const depOpts=DB.tareas.filter(x=>x.proyectoId===depPid&&x.id!==t.id);
   const depField=`<div class="col-md-6"><label class="form-label" style="font-size:.85rem;font-weight:600;">Depende de</label><select class="form-select" name="dependeDe"><option value="">— ninguna —</option>${depOpts.map(o=>`<option value="${o.id}" ${o.id===t.dependeDe?'selected':''}>${esc(o.titulo)}</option>`).join('')}</select></div>`;
   openModal(id?'Editar tarea':'Nueva tarea',
-    field('Tarea','titulo','text',t.titulo,null,true)+field('Proyecto','proyectoId','selectId',t.proyectoId||'',[{id:'',nombre:'— Selecciona proyecto —'}].concat(DB.proyectos))+field('Estado','estado','select',t.estado||'Por hacer',EST_TAR)+field('Responsable','responsable','text',t.responsable)+field('Equipo dedicado (separa por comas)','equipo','text',t.equipo)+field('Prioridad','prioridad','select',t.prioridad||'Media',PRIOS)+field('Fecha límite','fechaLimite','date',t.fechaLimite)+field('Estimación (h)','estimacion','number',t.estimacion)+depField+field('Etiquetas (separa por comas)','etiquetas','text',t.etiquetas)+field('Subtareas (una por línea; antepón x si está hecha)','_checklist','textarea',chkText,null,true)+field('Enlaces (uno por línea: etiqueta | https://...)','enlaces','textarea',t.enlaces,null,true)+field('Notas','notas','textarea',t.notas,null,true),
+    field('Tarea','titulo','text',t.titulo,null,true)+field('Proyecto','proyectoId','selectId',t.proyectoId||'',[{id:'',nombre:'— Selecciona proyecto —'}].concat(DB.proyectos))+field('Estado','estado','select',t.estado||'Por hacer',EST_TAR)+field('Responsable','responsable','text',t.responsable)+field('Equipo dedicado (separa por comas)','equipo','text',t.equipo)+field('Prioridad','prioridad','select',t.prioridad||'Media',PRIOS)+field('Fecha límite','fechaLimite','date',t.fechaLimite)+field('Estimación (h)','estimacion','number',t.estimacion)+depField+field('Etiquetas (separa por comas)','etiquetas','text',t.etiquetas)+field('Subtareas (una por línea; antepón x si está hecha)','_checklist','textarea',chkText,null,true)+field('Enlaces (uno por línea: etiqueta | https://...)','enlaces','textarea',t.enlaces,null,true)+field('Notas','notas','textarea',t.notas,null,true)+'<div class="col-12"><label class="form-label">Adjuntos</label><div id="adjuntosBox"></div></div>',
     ()=>{const d=formData();if(!d.titulo){alert('Ponle un título a la tarea');return;}
       d.checklist=(d._checklist||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const done=/^(x\s|\[x\])/i.test(l);return {t:l.replace(/^(x\s|\[x\]\s?)/i,'').trim(),done};});delete d._checklist;
       if(d.dependeDe){const dep=DB.tareas.find(x=>x.id===d.dependeDe);if(!dep||dep.proyectoId!==d.proyectoId)d.dependeDe='';}
       if(!id&&DB.config){const proj=DB.proyectos.find(x=>x.id===d.proyectoId);if(proj){if(DB.config.heredarResp&&!d.responsable)d.responsable=proj.responsable||'';if(DB.config.heredarFecha&&!d.fechaLimite)d.fechaLimite=proj.fechaEntrega||'';if(DB.config.heredarPrio&&proj.prioridad==='Alta'&&(!d.prioridad||d.prioridad==='Media'))d.prioridad='Alta';}}
       if(!d.proyectoId){alert('Elige un proyecto para la tarea.');return;}let rec;if(id){Object.assign(t,d);rec=t;}else{rec={id:uid(),...d};DB.tareas.push(rec);}dbSave('tareas',rec);entityModal().hide();if(!id&&currentView==='tareas'){['fTarCli','fTarResp','fTarPrio','fTarBuscar'].forEach(x=>{const el=document.getElementById(x);if(el)el.value='';});const pf=document.getElementById('fTarProyecto');if(pf)pf.value=proyName(rec.proyectoId);}refreshAll();if(!id)setTimeout(()=>alert('\u2705 Tarea creada en \u00ab'+proyName(rec.proyectoId)+'\u00bb.'),60);});
+  renderAdjuntosBox(id);
 }
 function delTarea(id){askConfirm('Eliminar tarea','Esta acción no se puede deshacer.',()=>{DB.tareas=DB.tareas.filter(t=>t.id!==id);dbDel('tareas',id);refreshAll();});}
 
@@ -964,7 +969,7 @@ async function limpiarDuplicados(){
   alert('Eliminadas '+ids.length+' tareas duplicadas.');
 }
 initTheme();
-console.log('%cNC gestor · build 2026-09-22d · limpiar recurrentes fiable','color:#6A5CFF;font-weight:bold;font-size:13px');
+console.log('%cNC gestor · build 2026-09-23 · adjuntos en tareas','color:#6A5CFF;font-weight:bold;font-size:13px');
 function cambiosAll(){return DB.proyectos.flatMap(p=>(p.cambios||[]).map(c=>Object.assign({proyectoId:p.id,clienteId:p.clienteId},c)));}
 function resChip(r){return 'rc '+({'Mejora':'rc-mej','Empeora':'rc-emp','Sin cambio':'rc-sin','Pendiente de medir':'rc-pen','Revertido':'rc-rev'}[r]||'rc-sin');}
 function cambFilters(){return PREFS['camb']||(PREFS['camb']={cliente:'',proyecto:'',responsable:'',tipo:'',resultado:''});}
@@ -1055,6 +1060,40 @@ async function limpiarRecurrentes(){
   try{await dbDelMany(ids);}catch(e){alert('Error al limpiar: '+e.message);await loadAll();refreshAll();return;}
   await loadAll();refreshAll();
   alert('Limpieza completada: '+ids.length+' tareas recurrentes eliminadas. La generación automática queda DESACTIVADA (vuelve a activarla en Automatizaciones cuando quieras).');
+}
+function fmtSize(b){b=+b||0;return b<1024?b+' B':(b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(1)+' MB');}
+function renderAdjuntosBox(taskId){
+  const box=document.getElementById('adjuntosBox');if(!box)return;
+  if(!taskId){box.innerHTML='<div class="text-muted" style="font-size:.84rem;">Guarda la tarea primero para poder adjuntar documentos.</div>';return;}
+  const t=DB.tareas.find(x=>x.id===taskId);const list=(t&&t.adjuntos)||[];
+  const items=list.length?list.map(a=>`<div class="adj-row"><span class="adj-name" title="${esc(a.name)}"><i class="bi bi-paperclip me-1"></i>${esc(a.name)}</span><span class="adj-size">${fmtSize(a.size)}</span><span class="adj-act"><button type="button" class="icon-btn" title="Abrir" onclick="openAdjunto('${esc(a.path)}')"><i class="bi bi-box-arrow-up-right"></i></button><button type="button" class="icon-btn danger" title="Eliminar" onclick="delAdjunto('${taskId}','${a.id}','${esc(a.path)}')"><i class="bi bi-trash"></i></button></span></div>`).join(''):'<div class="text-muted" style="font-size:.82rem;">Sin adjuntos.</div>';
+  box.innerHTML=items+`<div class="mt-2"><input type="file" id="adjFile" style="display:none" onchange="uploadAdjunto('${taskId}',event)"><button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('adjFile').click()"><i class="bi bi-upload me-1"></i>Adjuntar documento</button> <span id="adjStatus" class="text-muted" style="font-size:.8rem;"></span></div>`;
+}
+async function uploadAdjunto(taskId,e){
+  const f=e.target.files&&e.target.files[0];if(!f)return;e.target.value='';
+  const MAX=20*1024*1024;
+  if(f.size>MAX){alert('El archivo pesa '+(f.size/1048576).toFixed(1)+' MB y el límite es 20 MB. Comprime o divide el archivo.');return;}
+  const st=document.getElementById('adjStatus');if(st)st.textContent='Subiendo…';
+  const safe=f.name.replace(/[^\w.\-]+/g,'_');
+  const path=taskId+'/'+uid()+'-'+safe;
+  try{
+    const {error}=await sb.storage.from('adjuntos').upload(path,f,{upsert:false,contentType:f.type||undefined});
+    if(error)throw new Error(error.message||'error');
+    const t=DB.tareas.find(x=>x.id===taskId);if(!t)throw new Error('tarea no encontrada');
+    t.adjuntos=t.adjuntos||[];t.adjuntos.push({id:uid(),name:f.name,path:path,size:f.size,type:f.type||''});
+    dbSave('tareas',t);renderAdjuntosBox(taskId);refreshAll();
+    if(st)st.textContent='';
+  }catch(err){if(st)st.textContent='';alert('No se pudo subir: '+err.message);}
+}
+async function openAdjunto(path){
+  try{const {data,error}=await sb.storage.from('adjuntos').createSignedUrl(path,3600);if(error)throw new Error(error.message);window.open(data.signedUrl,'_blank');}
+  catch(e){alert('No se pudo abrir el adjunto: '+e.message);}
+}
+async function delAdjunto(taskId,adjId,path){
+  if(!confirm('¿Eliminar este adjunto?'))return;
+  try{await sb.storage.from('adjuntos').remove([path]);}catch(e){}
+  const t=DB.tareas.find(x=>x.id===taskId);if(t){t.adjuntos=(t.adjuntos||[]).filter(a=>a.id!==adjId);dbSave('tareas',t);}
+  renderAdjuntosBox(taskId);refreshAll();
 }
 /* Init · autenticación + carga */
 async function bootApp(){await loadAll();if(DB.config&&DB.config.recurrencia){try{await genRecurrencias('auto');}catch(e){console.warn('recurrencia',e);}}setupRealtime();document.getElementById('loginScreen').style.display='none';switchView('dashboard');}
