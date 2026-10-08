@@ -48,6 +48,16 @@
 .adj-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.86rem;}
 .adj-size{font-size:.75rem;color:var(--nc-muted);white-space:nowrap;}
 .adj-act{display:flex;gap:.2rem;}
+.combo{position:relative;}
+.combo input{padding-right:1.8rem;}
+.combo-clear{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--nc-muted);font-size:1.25rem;line-height:1;cursor:pointer;padding:0 .2rem;display:none;}
+.combo input:not(:placeholder-shown) ~ .combo-clear{display:block;}
+.combo-list{position:absolute;z-index:60;top:calc(100% + 3px);left:0;right:0;max-height:300px;overflow:auto;background:var(--nc-surface);border:1px solid var(--nc-border);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.14);display:none;}
+.combo-list.open{display:block;}
+.combo-opt{padding:.5rem .7rem;cursor:pointer;font-size:.88rem;border-bottom:1px solid var(--nc-border);white-space:normal;}
+.combo-opt:last-child{border-bottom:none;}
+.combo-opt:hover{background:var(--nc-elev);}
+.combo-empty{padding:.6rem .7rem;color:var(--nc-muted);font-size:.84rem;}
 body{background:var(--nc-bg);color:var(--nc-ink);font-family:'Noto Sans',system-ui,sans-serif;}
 h1,h2,h3,h4,h5{font-family:'Space Grotesk',sans-serif;}
 .mono{font-family:'Space Mono',monospace;}
@@ -353,7 +363,7 @@ a{color:#5648e0;}
         </div>
         <input class="form-control" id="fTarBuscar" placeholder="Buscar tarea…" oninput="renderTareas()">
         <select class="form-select" id="fTarCli" onchange="renderTareas()"><option value="">Todos los clientes</option></select>
-        <input class="form-control" id="fTarProyecto" list="fTarProyectoList" placeholder="Buscar proyecto por nombre…" oninput="renderTareas()" autocomplete="off" style="min-width:200px;"><datalist id="fTarProyectoList"></datalist>
+        <div class="combo" id="fTarProyCombo" style="min-width:220px;"><input class="form-control" type="text" id="fTarProyecto" placeholder="Buscar proyecto…" autocomplete="off" oninput="comboProyInput()" onfocus="comboProyOpen()" onkeydown="comboProyKey(event)"><button type="button" class="combo-clear" onclick="comboProyClear()" title="Quitar filtro" tabindex="-1">×</button><div class="combo-list" id="fTarProyList"></div></div>
         <select class="form-select" id="fTarResp" onchange="renderTareas()"><option value="">Todas las personas</option></select>
         <select class="form-select" id="fTarPrio" onchange="renderTareas()"><option value="">Toda prioridad</option><option>Alta</option><option>Media</option><option>Baja</option></select>
         <select class="form-select" id="fTarGroup" onchange="renderTareas()"><option value="">Sin agrupar</option><option value="proyecto">Agrupar: Proyecto</option><option value="cliente">Agrupar: Cliente</option><option value="responsable">Agrupar: Persona</option></select>
@@ -970,7 +980,7 @@ async function limpiarDuplicados(){
   alert('Eliminadas '+ids.length+' tareas duplicadas.');
 }
 initTheme();
-console.log('%cNC gestor · build 2026-09-24b · favicon + cambios','color:#6A5CFF;font-weight:bold;font-size:13px');
+console.log('%cNC gestor · build 2026-09-24c · buscador de proyecto mejorado','color:#6A5CFF;font-weight:bold;font-size:13px');
 function cambiosAll(){return DB.proyectos.flatMap(p=>(p.cambios||[]).map(c=>Object.assign({proyectoId:p.id,clienteId:p.clienteId},c)));}
 function resChip(r){return 'rc '+({'Mejora':'rc-mej','Empeora':'rc-emp','Sin cambio':'rc-sin','Pendiente de medir':'rc-pen','Revertido':'rc-rev'}[r]||'rc-sin');}
 function cambFilters(){return PREFS['camb']||(PREFS['camb']={cliente:'',proyecto:'',responsable:'',tipo:'',resultado:''});}
@@ -1103,6 +1113,21 @@ function revBanner(){const due=cambiosAll().filter(isRevDue).sort((a,b)=>(a.revi
   return `<div class="card-nc p-3 mb-3" style="border-left:4px solid #E5484D;"><div style="font-weight:700;margin-bottom:.4rem;"><i class="bi bi-bell me-1"></i>${due.length} cambio(s) para revisar (fecha alcanzada)</div>${due.slice(0,8).map(c=>`<div class="due-item"><div><span style="font-weight:600;cursor:pointer;" onclick="openCambio('${c.id}','${c.proyectoId}')">${esc(c.descripcion||c.tipo||'Cambio')}</span> <span class="text-muted" style="font-size:.8rem;">· ${esc(proyName(c.proyectoId))}</span></div><span class="rc rc-emp">${fmtDate(c.revision)}</span></div>`).join('')}${due.length>8?`<div class="text-muted" style="font-size:.8rem;">y ${due.length-8} más…</div>`:''}</div>`;}
 function duplicarCambio(pid,id){const src=cambiosAll().find(x=>x.id===id);if(!src){alert('No se encontró el cambio.');return;}const p=DB.proyectos.find(x=>x.id===(src.proyectoId||pid));if(!p){alert('No se encontró el proyecto.');return;}const copia=Object.assign({},src,{id:uid()});delete copia.proyectoId;delete copia.clienteId;copia.descripcion=(src.descripcion||'')+' (copia)';p.cambios=p.cambios||[];p.cambios.push(copia);dbSave('proyectos',p);refreshAll();}
 function checkRevisiones(){try{const due=cambiosAll().filter(isRevDue);if(!due.length)return;const key='nc_rev_'+new Date().toISOString().slice(0,10);if(localStorage.getItem(key))return;localStorage.setItem(key,'1');const lista=due.slice(0,10).map(c=>'• '+(c.descripcion||c.tipo||'Cambio')+' ('+proyName(c.proyectoId)+')').join('\n');setTimeout(()=>alert('🔔 Tienes '+due.length+' cambio(s) para revisar hoy o vencidos:\n\n'+lista+(due.length>10?'\n…':'')+'\n\nRevísalos en la pestaña «Cambios».'),800);}catch(e){}}
+function comboProyRender(){
+  const inp=document.getElementById('fTarProyecto');const list=document.getElementById('fTarProyList');if(!inp||!list)return;
+  const q=norm(inp.value);
+  let ps=DB.proyectos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  if(q)ps=ps.filter(p=>norm(p.nombre).includes(q)||norm(cliName(p.clienteId)).includes(q));
+  const total=ps.length;ps=ps.slice(0,60);
+  list.innerHTML=ps.length?ps.map(p=>`<div class="combo-opt" onmousedown="comboProyPick(event,'${p.id}')">${esc(p.nombre)}</div>`).join('')+(total>60?`<div class="combo-empty">y ${total-60} más… escribe para acotar</div>`:''):'<div class="combo-empty">Sin proyectos que coincidan</div>';
+}
+function comboProyOpen(){comboProyRender();const l=document.getElementById('fTarProyList');if(l)l.classList.add('open');}
+function comboProyClose(){const l=document.getElementById('fTarProyList');if(l)l.classList.remove('open');}
+function comboProyInput(){comboProyRender();const l=document.getElementById('fTarProyList');if(l)l.classList.add('open');renderTareas();}
+function comboProyPick(e,pid){if(e&&e.preventDefault)e.preventDefault();const p=DB.proyectos.find(x=>x.id===pid);if(!p)return;const inp=document.getElementById('fTarProyecto');inp.value=p.nombre;comboProyClose();renderTareas();}
+function comboProyClear(){const inp=document.getElementById('fTarProyecto');if(!inp)return;inp.value='';comboProyClose();renderTareas();inp.focus();}
+function comboProyKey(e){if(e.key==='Escape'){comboProyClose();}else if(e.key==='Enter'){e.preventDefault();const q=norm(document.getElementById('fTarProyecto').value);const p=DB.proyectos.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).find(x=>!q||norm(x.nombre).includes(q)||norm(cliName(x.clienteId)).includes(q));if(p)comboProyPick(e,p.id);}}
+document.addEventListener('click',function(e){const c=document.getElementById('fTarProyCombo');if(c&&!c.contains(e.target))comboProyClose();});
 /* Init · autenticación + carga */
 async function bootApp(){await loadAll();if(DB.config&&DB.config.recurrencia){try{await genRecurrencias('auto');}catch(e){console.warn('recurrencia',e);}}setupRealtime();document.getElementById('loginScreen').style.display='none';switchView('dashboard');checkRevisiones();}
 let _rtDone=false;
